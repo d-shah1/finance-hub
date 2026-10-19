@@ -51,10 +51,13 @@ const cardCrud = crudRouter({
   },
 });
 
+// Bills due within this many days are highlighted in the app.
+const DUE_SOON_DAYS = 3;
+
 /** Builds the bill/due summary for each card. Shared with the reminder scheduler. */
 export async function cardsOverview(uid, todayIso = today()) {
   const cards = await db.all(
-    `SELECT c.*, u.name AS user_name, u.card_reminder_days FROM cards c JOIN users u ON u.id = c.user_id
+    `SELECT c.*, u.name AS user_name FROM cards c JOIN users u ON u.id = c.user_id
      WHERE c.active = 1 ${uid !== null ? 'AND c.user_id = ?' : ''} ORDER BY c.name`,
     ...(uid !== null ? [uid] : [])
   );
@@ -70,7 +73,7 @@ export async function cardsOverview(uid, todayIso = today()) {
     let status = 'upcoming';
     if (payments.length) status = 'paid';
     else if (cycle.days_to_due < 0) status = 'overdue';
-    else if (cycle.days_to_due <= (card.card_reminder_days ?? 3)) status = 'due-soon';
+    else if (cycle.days_to_due <= DUE_SOON_DAYS) status = 'due-soon';
     const outstanding = billed + unbilled - paidAmount;
     out.push({
       ...card,

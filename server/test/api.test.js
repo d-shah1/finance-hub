@@ -182,3 +182,39 @@ test('deleting a card or a person cleans up their rows', async () => {
   assert.equal((await admin(`/users/${made.body.id}`, { method: 'DELETE' })).status, 200);
   assert.equal((await db.get('SELECT COUNT(*) AS n FROM expenses WHERE user_id = ?', made.body.id)).n, 0);
 });
+
+test('card and SIP reminders fire only the day before', async () => {
+  const admin = await login('admin', 'admin123');
+  const made = await admin('/users', { method: 'POST', body: { username: 'remind', name: 'Remind', password: 'remind123' } });
+  const u = await login('remind', 'remind123');
+  // Statement on the 20th, due on the 5th of the next month.
+  const dueTomorrow = await u('/cards', { method: 'POST', body: { name: 'Due 5th', statement_day: 20, due_day: 5 } });
+  const dueLater = await u('/cards', { method: 'POST', body: { name: 'Due 7th', statement_day: 20, due_day: 7 } });
+  const sipTomorrow = await u('/sips', { method: 'POST', body: { name: 'SIP 5th', amount: 1000, day_of_month: 5 } });
+  const sipToday = await u('/sips', { method: 'POST', body: { name: 'SIP 4th', amount: 1000, day_of_month: 4 } });
+  const sipMonthEnd = await u('/sips', { method: 'POST', body: { name: 'SIP 31st', amount: 1000, day_of_month: 31 } });
+
+  const sent = async (key) => !!(await db.get('SELECT 1 FROM sent_notifications WHERE key = ?', key));
+
+  // 08:30 IST on 4 Nov: too early for the morning reminders.
+  await tick(new Date('2026-11-04T03:00:00Z'));
+  assert.equal(await sent(`card:${dueTomorrow.body.id}:2026-11-05`), false);
+
+  // 09:30 IST on 4 Nov.
+  await tick(new Date('2026-11-04T04:00:00Z'));
+  assert.equal(await sent(`card:${dueTomorrow.body.id}:2026-11-05`), true, 'card due tomorrow');
+  assert.equal(await sent(`card:${dueLater.body.id}:2026-11-07`), false, 'card due in 3 days');
+  assert.equal(await sent(`sip:${sipTomorrow.body.id}:2026-11-05`), true, 'SIP tomorrow');
+  assert.equal(await sent(`sip:${sipToday.body.id}:2026-11-04`), false, 'no same-day SIP reminder');
+
+  // A plan on the 31st is reminded on 29 Nov, since November ends on the 30th.
+  await tick(new Date('2026-11-29T04:00:00Z'));
+  assert.equal(await sent(`sip:${sipMonthEnd.body.id}:2026-11-30`), true);
+
+  // Already paid early this month: no reminder.
+  await u(`/sips/${sipTomorrow.body.id}/log`, { method: 'POST', body: { date: '2026-12-01' } });
+  await tick(new Date('2026-12-04T04:00:00Z'));
+  assert.equal(await sent(`sip:${sipTomorrow.body.id}:2026-12-05`), false, 'skipped when already logged');
+
+  await admin(`/users/${made.body.id}`, { method: 'DELETE' });
+});

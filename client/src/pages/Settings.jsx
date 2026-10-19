@@ -24,7 +24,7 @@ function Section({ icon: Icon, title, text, children }) {
 
 export default function Settings() {
   const { user, setUser, dark, toggleTheme } = useApp();
-  const [profile, setProfile] = useState({ name: user.name, monthly_budget: user.monthly_budget ?? '', reminder_time: user.reminder_time, reminders_enabled: user.reminders_enabled, card_reminder_days: user.card_reminder_days });
+  const [profile, setProfile] = useState({ name: user.name, monthly_budget: user.monthly_budget ?? '', reminder_time: user.reminder_time, reminders_enabled: user.reminders_enabled });
   const [pushOn, setPushOn] = useState(false);
   const [pushError, setPushError] = useState(null);
   const [pw, setPw] = useState({ current: '', next: '' });
@@ -81,20 +81,15 @@ export default function Settings() {
     <>
       <PageHeader title="Settings" subtitle={`Signed in as ${user.username}`} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section icon={Bell} title="Reminders" text="Get a notification every evening to log the day's spending, plus alerts before credit card bills and SIP dates.">
+        <Section icon={Bell} title="Reminders" text="A notification every evening to log the day's spending, plus one the day before each credit card bill and SIP.">
           <form onSubmit={saveProfile} className="space-y-4">
             <label className="flex items-center gap-3">
               <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={profile.reminders_enabled} onChange={(e) => setProfile({ ...profile, reminders_enabled: e.target.checked })} />
               <span className="text-sm font-medium">Send me reminders</span>
             </label>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Field label="Daily reminder time">
-                <input className="input" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
-              </Field>
-              <Field label="Card bill alert (days before due)">
-                <input className="input" type="number" min="0" max="15" value={profile.card_reminder_days} onChange={(e) => setProfile({ ...profile, card_reminder_days: e.target.value })} />
-              </Field>
-            </div>
+            <Field label="Daily reminder time" hint="Card bill and SIP reminders arrive at 9 AM the day before they're due.">
+              <input className="input sm:max-w-[12rem]" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
+            </Field>
             <button className="btn-primary">Save reminder settings</button>
           </form>
           <div className="mt-5 rounded-xl border border-black/5 p-4 dark:border-white/10">

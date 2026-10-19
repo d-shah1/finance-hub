@@ -52,7 +52,6 @@ router.put('/me', ah(async (req, res) => {
       name: { type: 'string', maxLength: 60 },
       reminder_time: { type: 'string', maxLength: 5 },
       reminders_enabled: { type: 'bool' },
-      card_reminder_days: { type: 'int', min: 0, max: 15 },
       monthly_budget: { type: 'number', min: 0 },
     },
     { partial: true }

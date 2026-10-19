@@ -1,7 +1,7 @@
 import cron from 'node-cron';
 import { db } from '../db.js';
 import { sendToUser } from './push.js';
-import { nowParts } from './dates.js';
+import { addDays, clampedDate, monthRange, nowParts } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
 
 const MORNING = '09:00';
@@ -13,10 +13,12 @@ async function once(key, fn) {
 }
 
 const fmt = (n) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+const niceDate = (iso) => new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 
 /**
- * Sends any reminders that are due. Each fires at most once per day, on the first tick at or
- * after its time, so it works whether ticks come every minute (local) or every few minutes (cron service).
+ * Sends the reminders that are due: the daily "log today's transactions" nudge at each person's
+ * chosen time, and a heads-up the day before each card bill and SIP. Each fires once, on the first
+ * tick at or after its time, so it works whether ticks come every minute (local) or every few minutes (cron service).
  */
 export async function tick(date = new Date()) {
   const now = nowParts(date);
@@ -38,30 +40,37 @@ export async function tick(date = new Date()) {
       );
     }
 
+    // The day before a card bill or SIP is due, in the morning.
     if (now.time >= MORNING) {
-      // Credit card bills coming due.
+      const tomorrow = addDays(now.date, 1);
       for (const c of await cardsOverview(u.id, now.date)) {
-        if (c.status === 'paid') continue;
-        const d = c.cycle.days_to_due;
-        if (d === u.card_reminder_days || d === 1 || d === 0 || d === -1) {
-          jobs.push(
-            once(`card:${c.id}:${c.cycle.due_date}:${d}`, () =>
-              sendToUser(u.id, {
-                title: d < 0 ? `${c.name} bill is overdue` : d === 0 ? `${c.name} bill is due today` : `${c.name} bill due in ${d} day${d > 1 ? 's' : ''}`,
-                body: `Due ${c.cycle.due_date} · Billed ${fmt(c.billed_amount)}. Tap to mark it paid.`,
-                url: '/cards',
-                tag: `card-${c.id}`,
-              })
-            )
-          );
-        }
-      }
-      // Monthly investment instalments.
-      const sips = await db.all('SELECT * FROM sips WHERE user_id = ? AND active = 1 AND day_of_month = ?', u.id, now.day);
-      for (const s of sips) {
+        if (c.status === 'paid' || c.cycle.due_date !== tomorrow) continue;
         jobs.push(
-          once(`sip:${s.id}:${now.date}`, () =>
-            sendToUser(u.id, { title: `SIP day: ${s.name}`, body: `${fmt(s.amount)} is scheduled today. Log it once it's done.`, url: '/investments', tag: `sip-${s.id}` })
+          once(`card:${c.id}:${c.cycle.due_date}`, () =>
+            sendToUser(u.id, {
+              title: `${c.name} bill is due tomorrow`,
+              body: `Billed ${fmt(c.billed_amount)}, due ${niceDate(c.cycle.due_date)}. Tap to mark it paid.`,
+              url: '/cards',
+              tag: `card-${c.id}`,
+            })
+          )
+        );
+      }
+      const [ty, tm] = tomorrow.split('-').map(Number);
+      const { from, to } = monthRange(tomorrow.slice(0, 7));
+      for (const s of await db.all('SELECT * FROM sips WHERE user_id = ? AND active = 1', u.id)) {
+        // A plan on the 31st falls on the last day of shorter months.
+        if (clampedDate(ty, tm, s.day_of_month) !== tomorrow) continue;
+        const logged = await db.get('SELECT 1 FROM investments WHERE sip_id = ? AND date BETWEEN ? AND ?', s.id, from, to);
+        if (logged) continue;
+        jobs.push(
+          once(`sip:${s.id}:${tomorrow}`, () =>
+            sendToUser(u.id, {
+              title: `SIP tomorrow: ${s.name}`,
+              body: `${fmt(s.amount)} will be debited ${niceDate(tomorrow)}. Keep the balance ready.`,
+              url: '/investments',
+              tag: `sip-${s.id}`,
+            })
           )
         );
       }

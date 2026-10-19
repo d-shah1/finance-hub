@@ -17,7 +17,6 @@ export function publicUser(u) {
     role: u.role,
     reminder_time: u.reminder_time,
     reminders_enabled: !!u.reminders_enabled,
-    card_reminder_days: u.card_reminder_days,
     monthly_budget: u.monthly_budget,
   };
 }
