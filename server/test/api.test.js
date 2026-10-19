@@ -218,3 +218,31 @@ test('card and SIP reminders fire only the day before', async () => {
 
   await admin(`/users/${made.body.id}`, { method: 'DELETE' });
 });
+
+test('Vercel evening and morning jobs send without waiting for set times', async () => {
+  const admin = await login('admin', 'admin123');
+  const made = await admin('/users', { method: 'POST', body: { username: 'jobs', name: 'Jobs', password: 'jobs1234' } });
+  const u = await login('jobs', 'jobs1234');
+  await u('/me', { method: 'PUT', body: { reminder_time: '23:30' } });
+  const card = await u('/cards', { method: 'POST', body: { name: 'Due 13th', statement_day: 25, due_day: 13 } });
+  const sip = await u('/sips', { method: 'POST', body: { name: 'SIP 13th', amount: 500, day_of_month: 13 } });
+  const sent = async (key) => !!(await db.get('SELECT 1 FROM sent_notifications WHERE key = ?', key));
+
+  // 08:40 IST on 12 Jan: earlier than 9 AM, but it is the morning job, so it sends.
+  await tick(new Date('2027-01-12T03:10:00Z'), { job: 'morning' });
+  assert.equal(await sent(`card:${card.body.id}:2027-01-13`), true);
+  assert.equal(await sent(`sip:${sip.body.id}:2027-01-13`), true);
+  assert.equal(await sent(`daily:${made.body.id}:2027-01-12`), false, 'morning job does not send the evening reminder');
+
+  // 20:45 IST: before this person's 23:30 setting, but the evening job sends to everyone.
+  await tick(new Date('2027-01-12T15:15:00Z'), { job: 'evening' });
+  assert.equal(await sent(`daily:${made.body.id}:2027-01-12`), true);
+
+  // The job endpoints are protected and route to the right job.
+  assert.equal((await fetch(`${base}/cron/evening`)).status, 401);
+  const r = await fetch(`${base}/cron/morning`, { headers: { authorization: 'Bearer cron-test' } });
+  assert.equal((await r.json()).job, 'morning');
+  assert.notEqual((await fetch(`${base}/cron/other`, { headers: { authorization: 'Bearer cron-test' } })).status, 200, 'unknown jobs do not run');
+
+  await admin(`/users/${made.body.id}`, { method: 'DELETE' });
+});

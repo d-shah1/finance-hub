@@ -6,7 +6,7 @@ A personal finance tracker for **Darsh**, **Bhakti** and an **admin** who can se
 - **Earnings**: salary, freelance, bonus and more.
 - **Investments**: monthly plans (SIPs, RDs, PPF…) with one-tap "log this month", a log of one-off investments, and **stock holdings** with P&L (prices refresh from Yahoo Finance's free endpoint, or enter them by hand).
 - **Credit cards**: statement day and due day per card. The app works out each bill, its due date, unbilled spend and limit used, and lets you mark bills paid.
-- **Reminders**: a push notification every evening (default 9:30 PM, set your own time) to log the day's transactions, plus one at 9 AM the **day before** each credit card bill is due and each SIP is debited (skipped if the bill is already paid or the SIP already logged). If nothing has been logged today, an in-app banner shows as well.
+- **Reminders**: a push notification every evening to log the day's transactions, plus one in the morning the **day before** each credit card bill is due and each SIP is debited (skipped if the bill is already paid or the SIP already logged). If nothing has been logged today, an in-app banner shows as well.
 - **AI advisor (free)**: tells you how much to invest this month, how to split it, and where to cut spending. Uses a free AI tier (Groq or Google Gemini) or a local model (Ollama). With no key at all, a built-in rule-based advisor (50/30/20 budget, savings rate, emergency fund, card usage, stock concentration) still works.
 - **Admin**: sees everyone's data through a "Viewing" switcher, can add people and reset passwords.
 - Installable on your phone (PWA), with light and dark mode.
@@ -57,8 +57,7 @@ Notes:
 
 ## Deploy free on Vercel
 
-Vercel's free plan has no permanent disk and its free cron only runs once a day, so the hosted setup uses two other free services:
-**Turso** for the database (hosted SQLite) and **cron-job.org** for the evening reminders. Takes about 10 minutes.
+Vercel's free plan has no permanent disk, so the database lives on **Turso** (free hosted SQLite). Reminders run on Vercel's own free scheduled jobs, so nothing else is needed. Takes about 10 minutes.
 
 ### 1. Create the database (Turso, free)
 1. Sign up at https://turso.tech and create a database. Pick the region closest to you, e.g. Mumbai (`aws-ap-south-1`).
@@ -83,19 +82,21 @@ Vercel's free plan has no permanent disk and its free cron only runs once a day,
    The app will not start on Vercel without `JWT_SECRET` and the three passwords, so the default `admin123`-style passwords are never online.
 3. Click **Deploy**. Open the `…vercel.app` link and sign in.
 
-### 3. Turn on the evening reminders (cron-job.org, free)
-1. Sign up at https://cron-job.org and create a cron job:
-   - URL: `https://<your-app>.vercel.app/api/cron?key=<your CRON_SECRET>`
-   - Schedule: every 10 minutes
-2. Save. Each person then opens **Settings → Turn on** notifications on their phone.
+### 3. Reminders
+Nothing to set up: `vercel.json` registers two daily jobs (the free plan allows two, each once a day):
 
-Vercel's own daily cron (09:00 IST) also calls `/api/cron`, so the day-before card bill and SIP reminders go out even without cron-job.org. The evening "log today's transactions" reminder at your chosen time needs the 10-minute job.
+| Job | Time (IST) | Sends |
+|-----|-----------|-------|
+| `/api/cron/evening` | about 9 PM | "Log today's transactions" to everyone with reminders on |
+| `/api/cron/morning` | about 9 AM | Credit card bills and SIPs due **tomorrow** (skipped if already paid or logged) |
+
+Each person just opens **Settings → Turn on** notifications on their phone. Vercel may run a job some minutes after the hour it is scheduled for, so expect them roughly between 8:30 and 9:30. On Vercel the evening time is the same for everyone. The per-person reminder time in Settings applies when you self-host (below).
 
 Changed a variable later? Redeploy from the Vercel dashboard (Deployments → ⋯ → Redeploy) so it takes effect.
 
 ## Other hosting
 
-To run it as a normal long-lived server instead (a home computer with Cloudflare Tunnel, an Oracle Cloud "Always Free" VM, Railway, Fly.io…), use `npm run build && npm start`. Data lives in `data/finance.db` (back it up now and then), or point `DATABASE_URL` at Turso. Reminders are sent by the built-in scheduler, so no cron service is needed.
+To run it as a normal long-lived server instead (a home computer with Cloudflare Tunnel, an Oracle Cloud "Always Free" VM, Railway, Fly.io…), use `npm run build && npm start`. Data lives in `data/finance.db` (back it up now and then), or point `DATABASE_URL` at Turso. Reminders are sent by the built-in scheduler, and each person can pick their own evening reminder time in Settings.
 
 ## Project layout
 

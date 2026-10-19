@@ -114,15 +114,17 @@ function UserMenu() {
 }
 
 /** Shows a nudge after the user's reminder time if nothing was logged today, and a local notification as a fallback to push. */
-function useDailyReminder(user, version) {
+function useDailyReminder(user, version, fixedTimes) {
   const [due, setDue] = useState(false);
+  // On Vercel the evening reminder goes out at a fixed ~9 PM rather than each person's chosen time.
+  const reminderTime = fixedTimes ? '21:00' : user?.reminder_time;
   useEffect(() => {
     if (!user || user.role === 'admin' || !user.reminders_enabled) return;
     let cancelled = false;
     async function check() {
       const now = new Date();
       const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
-      if (hhmm < user.reminder_time) return setDue(false);
+      if (hhmm < reminderTime) return setDue(false);
       const rows = await api('/expenses', { params: { from: todayIso(), to: todayIso(), limit: 1 } }).catch(() => []);
       if (cancelled) return;
       const missing = rows.length === 0;
@@ -144,17 +146,17 @@ function useDailyReminder(user, version) {
       cancelled = true;
       clearInterval(id);
     };
-  }, [user, version]);
+  }, [user, version, reminderTime]);
   return due;
 }
 
 export default function Layout() {
-  const { user, isAdmin, version } = useApp();
+  const { user, isAdmin, version, meta } = useApp();
   const [adding, setAdding] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  const reminderDue = useDailyReminder(user, version);
+  const reminderDue = useDailyReminder(user, version, meta?.fixedReminderTimes);
 
   // Notification taps open /expenses?new=1
   useEffect(() => {

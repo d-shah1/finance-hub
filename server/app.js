@@ -29,19 +29,20 @@ export function createApp() {
     next();
   }));
 
-  // Reminder tick for serverless hosting. Called by Vercel Cron (sends "Authorization: Bearer CRON_SECRET")
-  // or by any free scheduler such as cron-job.org with ?key=CRON_SECRET.
-  app.all('/api/cron', ah(async (req, res) => {
+  // Reminder jobs for serverless hosting. Vercel Cron calls /api/cron/evening and /api/cron/morning once a
+  // day each (it sends "Authorization: Bearer CRON_SECRET"). Plain /api/cron runs the time-based check,
+  // for an external scheduler (e.g. cron-job.org with ?key=CRON_SECRET) that calls it every few minutes.
+  app.all(['/api/cron', '/api/cron/:job(evening|morning)'], ah(async (req, res) => {
     const given = req.get('authorization')?.replace(/^Bearer\s+/i, '') || req.query.key;
     if (!config.cronSecret || given !== config.cronSecret) return res.status(401).json({ error: 'Bad cron secret' });
-    await tick();
-    res.json({ ok: true, at: new Date().toISOString() });
+    await tick(new Date(), { job: req.params.job });
+    res.json({ ok: true, job: req.params.job || 'scheduled', at: new Date().toISOString() });
   }));
 
   app.use('/api', usersRouter);
   app.use('/api', requireAuth);
   app.get('/api/meta', (req, res) =>
-    res.json({ categories: EXPENSE_CATEGORIES, paymentModes: PAYMENT_MODES, upiApps: UPI_APPS, incomeTypes: INCOME_TYPES, investmentTypes: INVESTMENT_TYPES, timezone: config.timezone })
+    res.json({ categories: EXPENSE_CATEGORIES, paymentModes: PAYMENT_MODES, upiApps: UPI_APPS, incomeTypes: INCOME_TYPES, investmentTypes: INVESTMENT_TYPES, timezone: config.timezone, fixedReminderTimes: config.onVercel })
   );
   app.use('/api/expenses', expensesRouter);
   app.use('/api/income', incomeRouter);

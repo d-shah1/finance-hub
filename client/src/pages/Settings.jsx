@@ -20,7 +20,8 @@ function Heading({ icon, title }) {
 }
 
 export default function Settings() {
-  const { user, setUser, dark, toggleTheme } = useApp();
+  const { user, setUser, dark, toggleTheme, meta } = useApp();
+  const fixedTimes = meta?.fixedReminderTimes;
   const [profile, setProfile] = useState({ name: user.name, monthly_budget: user.monthly_budget ?? '', reminder_time: user.reminder_time, reminders_enabled: user.reminders_enabled });
   const [pushOn, setPushOn] = useState(false);
   const [pushError, setPushError] = useState(null);
@@ -89,9 +90,15 @@ export default function Settings() {
               <Switch id="rem-on" checked={profile.reminders_enabled} onCheckedChange={(c) => setProfile({ ...profile, reminders_enabled: c })} />
               <Label htmlFor="rem-on">Send me reminders</Label>
             </div>
-            <Field label="Daily reminder time" htmlFor="rem-time" hint="Card bill and SIP reminders arrive at 9 AM the day before they're due.">
-              <Input id="rem-time" className="sm:max-w-[12rem]" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
-            </Field>
+            {fixedTimes ? (
+              <p className="rounded-md bg-muted px-3 py-2.5 text-sm text-muted-foreground">
+                Every evening at about <strong className="text-foreground">9 PM</strong>, and at about <strong className="text-foreground">9 AM</strong> the day before each card bill and SIP.
+              </p>
+            ) : (
+              <Field label="Daily reminder time" htmlFor="rem-time" hint="Card bill and SIP reminders arrive at 9 AM the day before they're due.">
+                <Input id="rem-time" className="sm:max-w-[12rem]" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
+              </Field>
+            )}
             <Button type="submit">Save reminder settings</Button>
           </form>
           <Separator className="my-5" />
