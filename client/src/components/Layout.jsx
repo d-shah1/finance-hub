@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import {
-  BellRing, ChevronsUpDown, CreditCard, LayoutDashboard, LogOut, Menu, Moon, PiggyBank, Plus, Receipt, Settings, Sparkles, Sun, Users, Wallet,
+  BellRing, ChevronsUpDown, CreditCard, Download, LayoutDashboard, LogOut, Menu, Moon, PiggyBank, Plus, Receipt, Settings, Sparkles, Sun, Users, Wallet,
 } from 'lucide-react';
 import { useApp } from '@/context';
 import { api } from '@/lib/api';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Toaster } from '@/components/ui/sonner';
 import ExpenseForm from './ExpenseForm';
+import InstallPrompt, { useInstallAction } from './InstallPrompt';
 
 const NAV = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, end: true },
@@ -65,41 +66,50 @@ function ViewingSwitcher() {
 
 function UserMenu() {
   const { user, logout, dark, toggleTheme } = useApp();
+  const app = useInstallAction();
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
-          <Avatar className="h-8 w-8">
-            <AvatarFallback className="bg-gradient-to-br from-brand-400 to-violet-500 text-sm font-semibold text-white">{user.name[0]}</AvatarFallback>
-          </Avatar>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{user.name}</div>
-            <div className="text-xs capitalize text-muted-foreground">{user.role}</div>
-          </div>
-          <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent side="top" align="start" className="w-56">
-        <DropdownMenuLabel className="font-normal">
-          <div className="text-sm font-medium">{user.name}</div>
-          <div className="text-xs text-muted-foreground">@{user.username}</div>
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={toggleTheme}>
-          {dark ? <Sun /> : <Moon />}
-          {dark ? 'Light mode' : 'Dark mode'}
-        </DropdownMenuItem>
-        <DropdownMenuItem asChild>
-          <NavLink to="/settings">
-            <Settings /> Settings
-          </NavLink>
-        </DropdownMenuItem>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onSelect={logout} className="text-destructive focus:text-destructive">
-          <LogOut /> Sign out
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button className="flex w-full items-center gap-3 rounded-lg p-2 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring">
+            <Avatar className="h-8 w-8">
+              <AvatarFallback className="bg-gradient-to-br from-brand-400 to-violet-500 text-sm font-semibold text-white">{user.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{user.name}</div>
+              <div className="text-xs capitalize text-muted-foreground">{user.role}</div>
+            </div>
+            <ChevronsUpDown className="h-4 w-4 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent side="top" align="start" className="w-56">
+          <DropdownMenuLabel className="font-normal">
+            <div className="text-sm font-medium">{user.name}</div>
+            <div className="text-xs text-muted-foreground">@{user.username}</div>
+          </DropdownMenuLabel>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={toggleTheme}>
+            {dark ? <Sun /> : <Moon />}
+            {dark ? 'Light mode' : 'Dark mode'}
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <NavLink to="/settings">
+              <Settings /> Settings
+            </NavLink>
+          </DropdownMenuItem>
+          {!app.installed && (
+            <DropdownMenuItem onSelect={app.install}>
+              <Download /> Install app
+            </DropdownMenuItem>
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem onSelect={logout} className="text-destructive focus:text-destructive">
+            <LogOut /> Sign out
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {app.help}
+    </>
   );
 }
 
@@ -216,6 +226,7 @@ export default function Layout() {
         </header>
 
         <main className="mx-auto max-w-6xl px-4 pb-28 pt-6 sm:px-6 lg:px-8 lg:pb-12">
+          <InstallPrompt className="mb-6" />
           {reminderDue && (
             <div className="mb-6 flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-900 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
               <BellRing className="h-4 w-4 shrink-0" />

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ErrorText, Field } from '@/components/common';
+import InstallPrompt from '@/components/InstallPrompt';
 
 export default function Login() {
   const { setUser } = useApp();
@@ -56,7 +57,8 @@ export default function Login() {
         </div>
         <p className="relative text-xs text-white/60">Private to Darsh, Bhakti and the admin.</p>
       </div>
-      <div className="flex items-center justify-center p-6">
+      <div className="flex flex-col items-center justify-center gap-4 p-6">
+        <InstallPrompt className="w-full max-w-sm" />
         <Card className="w-full max-w-sm">
           <CardHeader>
             <img src="/icon.svg" alt="" className="mb-2 h-11 w-11 rounded-xl lg:hidden" />
