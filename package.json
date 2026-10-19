@@ -1,0 +1,31 @@
+{
+  "name": "finance-hub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Personal finance tracker: expenses, income, investments, stock holdings, credit card dues, daily reminders and free AI advice.",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "dev": "concurrently -n api,web -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "node --watch --disable-warning=ExperimentalWarning server/index.js",
+    "dev:client": "npm --prefix client run dev",
+    "build": "npm --prefix client install && npm --prefix client run build",
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning --test \"server/test/*.test.js\"",
+    "demo": "node --disable-warning=ExperimentalWarning server/scripts/seed-demo.js"
+  },
+  "dependencies": {
+    "bcryptjs": "2.4.3",
+    "cookie-parser": "1.4.7",
+    "dotenv": "16.4.7",
+    "express": "4.21.2",
+    "jsonwebtoken": "9.0.2",
+    "node-cron": "3.0.3",
+    "web-push": "3.6.7"
+  },
+  "devDependencies": {
+    "concurrently": "9.1.2"
+  }
+}

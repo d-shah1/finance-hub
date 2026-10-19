@@ -1,0 +1,158 @@
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+
+process.env.DB_PATH = ':memory:';
+process.env.JWT_SECRET = 'test-secret';
+
+const { seedUsers, db } = await import('../db.js');
+const { createApp } = await import('../index.js');
+const { cardCycle } = await import('../lib/cards.js');
+const { tick } = await import('../lib/scheduler.js');
+
+let server;
+let base;
+
+before(async () => {
+  seedUsers();
+  server = createApp().listen(0);
+  await new Promise((r) => server.once('listening', r));
+  base = `http://127.0.0.1:${server.address().port}/api`;
+});
+after(() => server.close());
+
+async function login(username, password) {
+  const res = await fetch(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, password }),
+  });
+  assert.equal(res.status, 200);
+  const cookie = res.headers.get('set-cookie').split(';')[0];
+  return async (path, opts = {}) => {
+    const r = await fetch(base + path, {
+      ...opts,
+      headers: { 'Content-Type': 'application/json', cookie },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    return { status: r.status, body: await r.json() };
+  };
+}
+
+test('rejects bad credentials and unauthenticated access', async () => {
+  const bad = await fetch(`${base}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: 'darsh', password: 'nope' }),
+  });
+  assert.equal(bad.status, 401);
+  assert.equal((await fetch(`${base}/expenses`)).status, 401);
+});
+
+test('users only see their own data; admin sees everyone', async () => {
+  const darsh = await login('darsh', 'darsh123');
+  const bhakti = await login('bhakti', 'bhakti123');
+  const admin = await login('admin', 'admin123');
+
+  const card = await darsh('/cards', { method: 'POST', body: { name: 'HDFC Millennia', statement_day: 5, due_day: 25, credit_limit: 100000 } });
+  assert.equal(card.status, 201);
+
+  const e1 = await darsh('/expenses', {
+    method: 'POST',
+    body: { date: '2026-10-10', amount: 450, category: 'Food & Dining', payment_mode: 'Card', card_id: card.body.id, merchant: 'Swiggy', upi_app: 'GPay' },
+  });
+  assert.equal(e1.status, 201);
+  assert.equal(e1.body.upi_app, null, 'UPI app is cleared for card payments');
+
+  const e2 = await bhakti('/expenses', { method: 'POST', body: { date: '2026-10-10', amount: 120, category: 'Transport', payment_mode: 'UPI', upi_app: 'PhonePe' } });
+  assert.equal(e2.status, 201);
+
+  // Bhakti cannot use or edit Darsh's card / expense.
+  const steal = await bhakti('/expenses', { method: 'POST', body: { date: '2026-10-10', amount: 1, category: 'Other', payment_mode: 'Card', card_id: card.body.id } });
+  assert.equal(steal.status, 400);
+  assert.equal((await bhakti(`/expenses/${e1.body.id}`, { method: 'DELETE' })).status, 404);
+
+  assert.equal((await darsh('/expenses')).body.length, 1);
+  assert.equal((await bhakti('/expenses')).body.length, 1);
+  assert.equal((await darsh('/expenses?userId=all')).body.length, 1, 'userId param is ignored for non-admins');
+  assert.equal((await admin('/expenses')).body.length, 2);
+  assert.equal((await admin(`/expenses?userId=${e2.body.user_id}`)).body.length, 1);
+  assert.equal((await darsh('/users')).status, 403);
+  assert.equal((await admin('/users')).body.length, 3);
+});
+
+test('validation errors are reported', async () => {
+  const darsh = await login('darsh', 'darsh123');
+  const r = await darsh('/expenses', { method: 'POST', body: { date: '10/10/2026', amount: 5, category: 'Other', payment_mode: 'Cash' } });
+  assert.equal(r.status, 400);
+  const r2 = await darsh('/expenses', { method: 'POST', body: { date: '2026-10-10', amount: 5, category: 'Other', payment_mode: 'Cheque' } });
+  assert.equal(r2.status, 400);
+});
+
+test('card billing cycle', () => {
+  // Statement on the 5th, due on the 25th of the same month.
+  let c = cardCycle({ statement_day: 5, due_day: 25 }, '2026-10-19');
+  assert.equal(c.billed_to, '2026-10-05');
+  assert.equal(c.billed_from, '2026-09-06');
+  assert.equal(c.due_date, '2026-10-25');
+  assert.equal(c.days_to_due, 6);
+  // Statement on the 20th, due on the 8th of next month; before this month's statement.
+  c = cardCycle({ statement_day: 20, due_day: 8 }, '2026-10-19');
+  assert.equal(c.billed_to, '2026-09-20');
+  assert.equal(c.due_date, '2026-10-08');
+  assert.ok(c.days_to_due < 0);
+  // Day 31 clamps to short months.
+  c = cardCycle({ statement_day: 31, due_day: 20 }, '2026-03-01');
+  assert.equal(c.billed_to, '2026-02-28');
+  assert.equal(c.due_date, '2026-03-20');
+});
+
+test('card overview, payments, SIPs and insights', async () => {
+  const darsh = await login('darsh', 'darsh123');
+  const overview = await darsh('/cards/overview');
+  assert.equal(overview.status, 200);
+  const card = overview.body[0];
+  assert.ok(card.cycle.due_date);
+  const pay = await darsh('/card-payments', { method: 'POST', body: { card_id: card.id, due_date: card.cycle.due_date, amount: 450, paid_on: '2026-10-19' } });
+  assert.equal(pay.status, 201);
+  assert.equal((await darsh('/cards/overview')).body[0].status, 'paid');
+
+  await darsh('/income', { method: 'POST', body: { date: '2026-10-01', amount: 80000, source: 'Acme Corp', type: 'Salary' } });
+  const sip = await darsh('/sips', { method: 'POST', body: { name: 'Nifty 50 Index', amount: 5000, day_of_month: 5 } });
+  assert.equal(sip.status, 201);
+  const logged = await darsh(`/sips/${sip.body.id}/log`, { method: 'POST', body: {} });
+  assert.equal(logged.status, 201);
+  const status = await darsh('/sips/status');
+  assert.ok(status.body[0].logged_this_month);
+
+  await darsh('/holdings', { method: 'POST', body: { symbol: 'INFY', quantity: 10, avg_price: 1500, current_price: 1650 } });
+  const summary = await darsh('/insights/summary?month=2026-10');
+  assert.equal(summary.status, 200);
+  assert.equal(summary.body.income, 80000);
+  assert.equal(summary.body.portfolio.pnl, 1500);
+  assert.ok(summary.body.advice.suggestedInvest > 0);
+  assert.ok(summary.body.advice.recommendations.length > 0);
+
+  const ai = await darsh('/insights/ai/analyse?month=2026-10', { method: 'POST', body: {} });
+  assert.equal(ai.status, 200);
+  assert.equal(ai.body.provider, null, 'no AI key configured in tests');
+  assert.ok(ai.body.advice);
+});
+
+test('daily reminder is only queued once per day', async () => {
+  // 21:45 IST on 2026-10-19
+  const at = new Date('2026-10-19T16:15:00Z');
+  await tick(at);
+  await tick(at);
+  const rows = db.prepare("SELECT key FROM sent_notifications WHERE key LIKE 'daily:%:2026-10-19'").all();
+  assert.equal(rows.length, 3);
+});
+
+test('settings and password change', async () => {
+  const bhakti = await login('bhakti', 'bhakti123');
+  const r = await bhakti('/me', { method: 'PUT', body: { reminder_time: '22:15', monthly_budget: 30000 } });
+  assert.equal(r.body.reminder_time, '22:15');
+  assert.equal((await bhakti('/me', { method: 'PUT', body: { reminder_time: '25:00' } })).status, 400);
+  assert.equal((await bhakti('/me/password', { method: 'POST', body: { current: 'wrong', next: 'newpass1' } })).status, 400);
+  assert.equal((await bhakti('/me/password', { method: 'POST', body: { current: 'bhakti123', next: 'newpass1' } })).status, 200);
+  await login('bhakti', 'newpass1');
+});
