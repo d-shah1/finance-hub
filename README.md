@@ -105,5 +105,6 @@ server/            Express API, SQLite/libSQL schema, reminder scheduler, AI + r
   routes/          expenses, income, investments & SIPs, holdings, cards, insights, push, users
   lib/             auth, CRUD helper, card billing cycle, insights, LLM client, push, scheduler
   test/            API tests (npm test)
-client/            React + Vite + Tailwind web app (PWA)
+client/            React + Vite + Tailwind + shadcn/ui web app (PWA)
+  src/components/ui/   shadcn/ui components (add more with `npx shadcn@latest add <name>`)
 ```

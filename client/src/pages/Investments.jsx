@@ -1,11 +1,16 @@
 import { useState } from 'react';
 import { CalendarClock, CheckCircle2, LineChart, PiggyBank, Plus, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
-import { useApi, useApp } from '../context';
-import { api } from '../lib/api';
-import { inr, niceDate, pct, todayIso } from '../lib/format';
-import { Badge, Empty, Loading, PageHeader, Segmented, StatCard, toast } from '../components/ui';
-import { Donut, foldOther } from '../components/charts';
-import EntityForm from '../components/EntityForm';
+import { useApi, useApp } from '@/context';
+import { api } from '@/lib/api';
+import { inr, niceDate, pct, todayIso } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Badge, Empty, Loading, PageHeader, Section, StatCard, toast } from '@/components/common';
+import { Donut, foldOther } from '@/components/charts';
+import EntityForm from '@/components/EntityForm';
 
 function Plans({ meta, viewingAll }) {
   const { refresh } = useApp();
@@ -31,16 +36,16 @@ function Plans({ meta, viewingAll }) {
   }
 
   return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4">
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-4 sm:px-5">
         <div>
           <h2 className="font-semibold">Monthly plans (SIPs, RDs…)</h2>
-          <p className="muted text-xs">Committed every month: {inr(total)}</p>
+          <p className="text-xs text-muted-foreground">Committed every month: {inr(total)}</p>
         </div>
         {!viewingAll && (
-          <button className="btn-secondary py-2" onClick={() => setAdding(true)}>
-            <Plus size={16} /> New plan
-          </button>
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Plus /> New plan
+          </Button>
         )}
       </div>
       {loading && !data ? (
@@ -48,9 +53,9 @@ function Plans({ meta, viewingAll }) {
       ) : !data?.length ? (
         <Empty icon={CalendarClock} title="No monthly plans" text="Add SIPs or recurring deposits. You'll be reminded on the debit day and can log each instalment in one tap." />
       ) : (
-        <ul className="divide-y divide-black/5 dark:divide-white/5">
+        <ul className="divide-y border-t">
           {data.map((s) => (
-            <li key={s.id} className="flex flex-wrap items-center gap-3 px-5 py-3">
+            <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
               <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setEditing(s)}>
                 <span className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
                   <span className="text-[10px] leading-none">day</span>
@@ -58,7 +63,7 @@ function Plans({ meta, viewingAll }) {
                 </span>
                 <div className="min-w-0">
                   <div className={`truncate font-medium ${s.active ? '' : 'line-through opacity-60'}`}>{s.name}</div>
-                  <div className="muted text-xs">
+                  <div className="text-xs text-muted-foreground">
                     {s.type}
                     {s.platform ? ` · ${s.platform}` : ''}
                     {viewingAll ? ` · ${s.user_name}` : ''}
@@ -68,11 +73,13 @@ function Plans({ meta, viewingAll }) {
               <span className="tabular font-semibold">{inr(s.amount)}</span>
               {s.active ? (
                 s.logged_this_month ? (
-                  <Badge tone="good"><CheckCircle2 size={12} /> Done this month</Badge>
+                  <Badge tone="good">
+                    <CheckCircle2 /> Done this month
+                  </Badge>
                 ) : (
-                  <button className="btn-primary px-3 py-1.5 text-xs" onClick={() => logIt(s)}>
+                  <Button size="sm" onClick={() => logIt(s)}>
                     Log this month
-                  </button>
+                  </Button>
                 )
               ) : (
                 <Badge>Paused</Badge>
@@ -93,7 +100,7 @@ function Plans({ meta, viewingAll }) {
         fields={fields}
         initial={() => ({ type: 'Mutual Fund', day_of_month: 5, active: 1, start_date: todayIso() })}
       />
-    </section>
+    </Card>
   );
 }
 
@@ -110,13 +117,13 @@ function Log({ meta, viewingAll }) {
     { name: 'notes', label: 'Notes' },
   ];
   return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-2 pt-4">
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-4 sm:px-5">
         <h2 className="font-semibold">Investment log</h2>
         {!viewingAll && (
-          <button className="btn-secondary py-2" onClick={() => setAdding(true)}>
-            <Plus size={16} /> Add investment
-          </button>
+          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+            <Plus /> Add investment
+          </Button>
         )}
       </div>
       {loading && !data ? (
@@ -124,13 +131,13 @@ function Log({ meta, viewingAll }) {
       ) : !data?.length ? (
         <Empty icon={PiggyBank} title="Nothing logged yet" text="Record one-off investments here: lump sums, FDs, gold, etc." />
       ) : (
-        <ul className="divide-y divide-black/5 dark:divide-white/5">
+        <ul className="divide-y border-t">
           {data.map((r) => (
             <li key={r.id}>
-              <button className="flex w-full items-center gap-3 px-5 py-3 text-left hover:bg-slate-50 dark:hover:bg-ink-850" onClick={() => setEditing(r)}>
+              <button className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-5" onClick={() => setEditing(r)}>
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{r.name}</div>
-                  <div className="muted text-xs">
+                  <div className="text-xs text-muted-foreground">
                     {niceDate(r.date, { day: 'numeric', month: 'short', year: 'numeric' })} · {r.type}
                     {r.platform ? ` · ${r.platform}` : ''}
                     {r.sip_id ? ' · SIP' : ''}
@@ -155,7 +162,7 @@ function Log({ meta, viewingAll }) {
         fields={fields}
         initial={() => ({ date: todayIso(), type: 'Mutual Fund' })}
       />
-    </section>
+    </Card>
   );
 }
 
@@ -199,11 +206,11 @@ function Holdings({ viewingAll }) {
   }
 
   return (
-    <section className="card overflow-hidden">
-      <div className="flex flex-wrap items-center justify-between gap-2 px-5 pb-3 pt-4">
+    <Card className="overflow-hidden">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-4 sm:px-5">
         <div>
           <h2 className="font-semibold">Stock holdings</h2>
-          <p className="muted text-xs">
+          <p className="text-xs text-muted-foreground">
             Invested {inr(cost)} · Now {inr(value)} ·{' '}
             <span className={value - cost >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
               {value - cost >= 0 ? '+' : ''}
@@ -212,13 +219,13 @@ function Holdings({ viewingAll }) {
           </p>
         </div>
         <div className="flex gap-2">
-          <button className="btn-secondary py-2" onClick={refreshPrices} disabled={refreshing || !rows.length}>
-            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} /> Refresh prices
-          </button>
+          <Button variant="outline" size="sm" onClick={refreshPrices} disabled={refreshing || !rows.length}>
+            <RefreshCw className={refreshing ? 'animate-spin' : ''} /> Refresh prices
+          </Button>
           {!viewingAll && (
-            <button className="btn-secondary py-2" onClick={() => setAdding(true)}>
-              <Plus size={16} /> Add stock
-            </button>
+            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+              <Plus /> Add stock
+            </Button>
           )}
         </div>
       </div>
@@ -227,44 +234,42 @@ function Holdings({ viewingAll }) {
       ) : !rows.length ? (
         <Empty icon={LineChart} title="No stocks yet" text="Add the shares you hold to track their value and profit or loss." />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="muted border-y border-black/5 bg-slate-50/60 text-left text-xs dark:border-white/5 dark:bg-ink-850/60">
-                <th className="px-5 py-2 font-medium">Stock</th>
-                <th className="px-3 py-2 text-right font-medium">Qty</th>
-                <th className="px-3 py-2 text-right font-medium">Avg</th>
-                <th className="px-3 py-2 text-right font-medium">LTP</th>
-                <th className="px-3 py-2 text-right font-medium">Value</th>
-                <th className="px-5 py-2 text-right font-medium">P&amp;L</th>
-              </tr>
-            </thead>
-            <tbody className="tabular divide-y divide-black/5 dark:divide-white/5">
-              {rows.map((h) => (
-                <tr key={h.id} className="cursor-pointer hover:bg-slate-50 dark:hover:bg-ink-850" onClick={() => setEditing(h)}>
-                  <td className="px-5 py-3">
-                    <div className="font-semibold">{h.symbol}</div>
-                    <div className="muted text-xs">
-                      {h.name || h.exchange}
-                      {viewingAll ? ` · ${h.user_name}` : ''}
-                    </div>
-                  </td>
-                  <td className="px-3 py-3 text-right">{h.quantity}</td>
-                  <td className="px-3 py-3 text-right">{inr(h.avg_price, true)}</td>
-                  <td className="px-3 py-3 text-right">{h.current_price != null ? inr(h.current_price, true) : <span className="muted">—</span>}</td>
-                  <td className="px-3 py-3 text-right font-medium">{inr(h.value)}</td>
-                  <td className={`px-5 py-3 text-right font-semibold ${h.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
-                    <span className="inline-flex items-center gap-1">
-                      {h.pnl >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                      {inr(h.pnl)}
-                    </span>
-                    <div className="text-xs font-normal">{pct(h.ret, 1)}</div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table className="min-w-[640px]">
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="pl-4 sm:pl-5">Stock</TableHead>
+              <TableHead className="text-right">Qty</TableHead>
+              <TableHead className="text-right">Avg</TableHead>
+              <TableHead className="text-right">LTP</TableHead>
+              <TableHead className="text-right">Value</TableHead>
+              <TableHead className="pr-4 text-right sm:pr-5">P&amp;L</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody className="tabular">
+            {rows.map((h) => (
+              <TableRow key={h.id} className="cursor-pointer" onClick={() => setEditing(h)}>
+                <TableCell className="py-3 pl-4 sm:pl-5">
+                  <div className="font-semibold">{h.symbol}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {h.name || h.exchange}
+                    {viewingAll ? ` · ${h.user_name}` : ''}
+                  </div>
+                </TableCell>
+                <TableCell className="text-right">{h.quantity}</TableCell>
+                <TableCell className="text-right">{inr(h.avg_price, true)}</TableCell>
+                <TableCell className="text-right">{h.current_price != null ? inr(h.current_price, true) : <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className="text-right font-medium">{inr(h.value)}</TableCell>
+                <TableCell className={cn('pr-4 text-right font-semibold sm:pr-5', h.pnl >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
+                  <span className="inline-flex items-center gap-1">
+                    {h.pnl >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                    {inr(h.pnl)}
+                  </span>
+                  <div className="text-xs font-normal">{pct(h.ret, 1)}</div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
       <EntityForm
         open={adding || !!editing}
@@ -278,21 +283,20 @@ function Holdings({ viewingAll }) {
         fields={fields}
         initial={{ exchange: 'NSE' }}
       />
-    </section>
+    </Card>
   );
 }
 
 export default function Investments() {
   const { meta, viewingAll } = useApp();
-  const [tab, setTab] = useState('plans');
   const { data } = useApi('/insights/summary');
 
   return (
     <>
       <PageHeader title="Investments" subtitle="Monthly SIPs, one-off investments and your stock portfolio" />
       {data && (
-        <div className="mb-4 grid gap-4 lg:grid-cols-3">
-          <div className="grid grid-cols-2 gap-3 lg:col-span-2 lg:grid-cols-2">
+        <div className="mb-6 grid gap-4 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 lg:col-span-2">
             <StatCard label="Invested this month" value={inr(data.invested)} icon={PiggyBank} tone="violet" />
             <StatCard label="Monthly SIPs" value={inr(data.sipMonthly)} icon={CalendarClock} sub={`${data.sips.length} active plans`} />
             <StatCard label="Total invested (all time)" value={inr(data.totalInvestedAllTime)} icon={PiggyBank} tone="good" />
@@ -304,30 +308,27 @@ export default function Investments() {
               sub={`${data.portfolio.pnl >= 0 ? '+' : ''}${inr(data.portfolio.pnl)} overall`}
             />
           </div>
-          <section className="card card-pad">
-            <h2 className="mb-3 font-semibold">Where your money is invested</h2>
-            {data.investByType.length ? (
-              <Donut data={foldOther(data.investByType, 6)} height={150} centerLabel="Total" />
-            ) : (
-              <Empty title="No investments logged" />
-            )}
-          </section>
+          <Section title="Where your money is invested">
+            {data.investByType.length ? <Donut data={foldOther(data.investByType, 6)} height={150} centerLabel="Total" /> : <Empty title="No investments logged" />}
+          </Section>
         </div>
       )}
-      <div className="mb-4">
-        <Segmented
-          options={[
-            { value: 'plans', label: 'Monthly plans' },
-            { value: 'log', label: 'Investment log' },
-            { value: 'stocks', label: 'Stock holdings' },
-          ]}
-          value={tab}
-          onChange={setTab}
-        />
-      </div>
-      {tab === 'plans' && <Plans meta={meta} viewingAll={viewingAll} />}
-      {tab === 'log' && <Log meta={meta} viewingAll={viewingAll} />}
-      {tab === 'stocks' && <Holdings viewingAll={viewingAll} />}
+      <Tabs defaultValue="plans">
+        <TabsList className="mb-2">
+          <TabsTrigger value="plans">Monthly plans</TabsTrigger>
+          <TabsTrigger value="log">Investment log</TabsTrigger>
+          <TabsTrigger value="stocks">Stock holdings</TabsTrigger>
+        </TabsList>
+        <TabsContent value="plans">
+          <Plans meta={meta} viewingAll={viewingAll} />
+        </TabsContent>
+        <TabsContent value="log">
+          <Log meta={meta} viewingAll={viewingAll} />
+        </TabsContent>
+        <TabsContent value="stocks">
+          <Holdings viewingAll={viewingAll} />
+        </TabsContent>
+      </Tabs>
     </>
   );
 }

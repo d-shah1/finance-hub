@@ -1,9 +1,9 @@
 import {
   Bar, BarChart, CartesianGrid, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
-import { useApp } from '../context';
-import { chartTheme, MODE_SLOT } from '../lib/palette';
-import { inr, inrShort, niceDate, shortMonth } from '../lib/format';
+import { useApp } from '@/context';
+import { chartTheme, MODE_SLOT } from '@/lib/palette';
+import { inr, inrShort, niceDate, shortMonth } from '@/lib/format';
 
 function useTheme() {
   return chartTheme(useApp().dark);
@@ -12,12 +12,12 @@ function useTheme() {
 function TooltipBox({ active, payload, label, labelFormatter }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-black/10 bg-white px-3 py-2 text-xs shadow-lg dark:border-white/10 dark:bg-ink-850">
+    <div className="rounded-lg border bg-popover px-3 py-2 text-xs text-popover-foreground shadow-md">
       {label !== undefined && <div className="mb-1 font-semibold">{labelFormatter ? labelFormatter(label) : label}</div>}
       {payload.map((p) => (
         <div key={p.dataKey ?? p.name} className="flex items-center gap-2">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: p.payload?.fill || p.color }} />
-          <span className="muted">{p.name}</span>
+          <span className="text-muted-foreground">{p.name}</span>
           <span className="tabular ml-auto pl-3 font-semibold">{inr(p.value)}</span>
         </div>
       ))}
@@ -29,7 +29,7 @@ function LegendRow({ payload }) {
   return (
     <div className="mt-2 flex flex-wrap justify-center gap-4 text-xs">
       {payload.map((p) => (
-        <span key={p.value} className="muted inline-flex items-center gap-1.5">
+        <span key={p.value} className="inline-flex items-center gap-1.5 text-muted-foreground">
           <span className="h-2.5 w-2.5 rounded-sm" style={{ background: p.color }} />
           {p.value}
         </span>
@@ -96,7 +96,7 @@ export function Donut({ data, colorFor, height = 190, centerLabel, centerValue }
           </PieChart>
         </ResponsiveContainer>
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          <span className="muted text-xs">{centerLabel}</span>
+          <span className="text-xs text-muted-foreground">{centerLabel}</span>
           <span className="text-lg font-bold">{centerValue ?? inrShort(total)}</span>
         </div>
       </div>
@@ -105,7 +105,7 @@ export function Donut({ data, colorFor, height = 190, centerLabel, centerValue }
           <li key={d.key} className="flex items-center gap-2">
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: colorFor ? colorFor(d, i, t) : t.series[i] }} />
             <span className="truncate">{d.key}</span>
-            <span className="muted ml-auto shrink-0 text-xs">{total ? Math.round((d.total / total) * 100) : 0}%</span>
+            <span className="ml-auto shrink-0 text-xs text-muted-foreground">{total ? Math.round((d.total / total) * 100) : 0}%</span>
             <span className="tabular shrink-0 text-right font-semibold">{inr(d.total)}</span>
           </li>
         ))}
@@ -137,10 +137,10 @@ export function BarList({ rows, max, onSelect, color }) {
               <span className="truncate font-medium group-hover:underline">{r.key}</span>
               <span className="tabular shrink-0 font-semibold">
                 {inr(r.total)}
-                {r.count !== undefined && <span className="muted ml-1.5 text-xs font-normal">{r.count}×</span>}
+                {r.count !== undefined && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{r.count}×</span>}
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
+            <div className="h-2 overflow-hidden rounded-full bg-muted">
               <div className="h-full rounded-full transition-all" style={{ width: `${Math.max(2, (r.total / top) * 100)}%`, background: color || t.series[0] }} />
             </div>
           </button>

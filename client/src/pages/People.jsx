@@ -1,15 +1,23 @@
 import { useState } from 'react';
 import { KeyRound, Plus, Shield, Trash2 } from 'lucide-react';
-import { useApp } from '../context';
-import { api } from '../lib/api';
-import { niceDate } from '../lib/format';
-import { Badge, ErrorText, Field, Modal, PageHeader, toast } from '../components/ui';
+import { useApp } from '@/context';
+import { api } from '@/lib/api';
+import { niceDate } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge, ErrorText, Field, Modal, PageHeader, toast } from '@/components/common';
+
+const BLANK = { username: '', name: '', password: '', role: 'user' };
 
 export default function People() {
   const { people, setPeople, user, setViewing } = useApp();
   const [adding, setAdding] = useState(false);
-  const [form, setForm] = useState({ username: '', name: '', password: '', role: 'user' });
+  const [form, setForm] = useState(BLANK);
   const [resetFor, setResetFor] = useState(null);
+  const [deleting, setDeleting] = useState(null);
   const [newPw, setNewPw] = useState('');
   const [error, setError] = useState(null);
 
@@ -22,7 +30,7 @@ export default function People() {
       await api('/users', { method: 'POST', body: form });
       toast('Person added');
       setAdding(false);
-      setForm({ username: '', name: '', password: '', role: 'user' });
+      setForm(BLANK);
       reload();
     } catch (err) {
       setError(err);
@@ -42,10 +50,10 @@ export default function People() {
     }
   }
 
-  async function remove(p) {
-    if (!window.confirm(`Delete ${p.name} and ALL their data? This cannot be undone.`)) return;
-    await api(`/users/${p.id}`, { method: 'DELETE' });
-    toast(`${p.name} removed`);
+  async function remove() {
+    await api(`/users/${deleting.id}`, { method: 'DELETE' });
+    toast(`${deleting.name} removed`);
+    setDeleting(null);
     reload();
   }
 
@@ -55,54 +63,56 @@ export default function People() {
         title="People"
         subtitle="Everyone who can sign in. As admin you can see all of their data."
         actions={
-          <button className="btn-primary" onClick={() => setAdding(true)}>
-            <Plus size={16} /> Add person
-          </button>
+          <Button onClick={() => setAdding(true)}>
+            <Plus /> Add person
+          </Button>
         }
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {people.map((p) => (
-          <div key={p.id} className="card card-pad">
+          <Card key={p.id} className="p-5">
             <div className="flex items-center gap-3">
-              <span className="flex h-11 w-11 items-center justify-center rounded-full bg-gradient-to-br from-brand-400 to-violet-500 font-bold text-white">{p.name[0]}</span>
+              <Avatar className="h-11 w-11">
+                <AvatarFallback className="bg-gradient-to-br from-brand-400 to-violet-500 font-semibold text-white">{p.name[0]}</AvatarFallback>
+              </Avatar>
               <div className="min-w-0 flex-1">
                 <div className="truncate font-semibold">{p.name}</div>
-                <div className="muted text-xs">@{p.username}</div>
+                <div className="text-xs text-muted-foreground">@{p.username}</div>
               </div>
               {p.role === 'admin' ? (
                 <Badge tone="brand">
-                  <Shield size={12} /> Admin
+                  <Shield /> Admin
                 </Badge>
               ) : (
                 <Badge>Member</Badge>
               )}
             </div>
             <dl className="mt-4 grid grid-cols-2 gap-2 text-sm">
-              <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-ink-850">
-                <dt className="muted text-xs">Expenses logged</dt>
+              <div className="rounded-lg bg-muted p-2.5">
+                <dt className="text-xs text-muted-foreground">Expenses logged</dt>
                 <dd className="font-semibold">{p.expenses}</dd>
               </div>
-              <div className="rounded-xl bg-slate-50 p-2.5 dark:bg-ink-850">
-                <dt className="muted text-xs">Last entry</dt>
+              <div className="rounded-lg bg-muted p-2.5">
+                <dt className="text-xs text-muted-foreground">Last entry</dt>
                 <dd className="font-semibold">{p.last_expense ? niceDate(p.last_expense) : '—'}</dd>
               </div>
             </dl>
             <div className="mt-4 flex flex-wrap gap-2">
               {p.role !== 'admin' && (
-                <button className="btn-secondary px-3 py-1.5 text-xs" onClick={() => setViewing(String(p.id))}>
+                <Button variant="outline" size="sm" onClick={() => setViewing(String(p.id))}>
                   View their data
-                </button>
+                </Button>
               )}
-              <button className="btn-ghost px-3 py-1.5 text-xs" onClick={() => setResetFor(p)}>
-                <KeyRound size={14} /> Reset password
-              </button>
+              <Button variant="ghost" size="sm" onClick={() => setResetFor(p)}>
+                <KeyRound /> Reset password
+              </Button>
               {p.id !== user.id && (
-                <button className="btn-ghost px-3 py-1.5 text-xs text-red-600 dark:text-red-400" onClick={() => remove(p)}>
-                  <Trash2 size={14} /> Delete
-                </button>
+                <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive" onClick={() => setDeleting(p)}>
+                  <Trash2 /> Delete
+                </Button>
               )}
             </div>
-          </div>
+          </Card>
         ))}
       </div>
 
@@ -111,26 +121,31 @@ export default function People() {
         onClose={() => setAdding(false)}
         title="Add person"
         footer={
-          <button form="add-person" className="btn-primary">
+          <Button form="add-person" type="submit">
             Create account
-          </button>
+          </Button>
         }
       >
         <form id="add-person" onSubmit={add} className="space-y-4">
-          <Field label="Name">
-            <input className="input" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <Field label="Name" htmlFor="np-name">
+            <Input id="np-name" required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
           </Field>
-          <Field label="Username">
-            <input className="input" required autoCapitalize="none" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <Field label="Username" htmlFor="np-user">
+            <Input id="np-user" required autoCapitalize="none" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
           </Field>
-          <Field label="Password" hint="They can change it in Settings">
-            <input className="input" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <Field label="Password" htmlFor="np-pass" hint="They can change it in Settings">
+            <Input id="np-pass" required minLength={6} value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
           </Field>
           <Field label="Role">
-            <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value })}>
-              <option value="user">Member (sees only their own data)</option>
-              <option value="admin">Admin (sees everything)</option>
-            </select>
+            <Select value={form.role} onValueChange={(role) => setForm({ ...form, role })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="user">Member (sees only their own data)</SelectItem>
+                <SelectItem value="admin">Admin (sees everything)</SelectItem>
+              </SelectContent>
+            </Select>
           </Field>
           <ErrorText error={error} />
         </form>
@@ -141,18 +156,35 @@ export default function People() {
         onClose={() => setResetFor(null)}
         title={`Reset password for ${resetFor?.name}`}
         footer={
-          <button form="reset-pw" className="btn-primary">
+          <Button form="reset-pw" type="submit">
             Reset
-          </button>
+          </Button>
         }
       >
         <form id="reset-pw" onSubmit={reset} className="space-y-4">
-          <Field label="New password">
-            <input className="input" required minLength={6} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
+          <Field label="New password" htmlFor="rp-pass">
+            <Input id="rp-pass" required minLength={6} value={newPw} onChange={(e) => setNewPw(e.target.value)} />
           </Field>
           <ErrorText error={error} />
         </form>
       </Modal>
+
+      <Modal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title={`Delete ${deleting?.name}?`}
+        description="This removes the account and all of their expenses, earnings, investments and cards. It cannot be undone."
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={remove}>
+              Delete everything
+            </Button>
+          </>
+        }
+      />
     </>
   );
 }

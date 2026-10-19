@@ -1,16 +1,35 @@
 import { useState } from 'react';
 import { Link, useNavigate, useOutletContext } from 'react-router-dom';
 import { ArrowDownRight, ArrowUpRight, CalendarClock, CreditCard, PiggyBank, Plus, Receipt, Sparkles, TrendingUp, Wallet } from 'lucide-react';
-import { useApi, useApp } from '../context';
-import { currentMonth, inr, monthLabel, niceDate, pct, relativeDay } from '../lib/format';
-import { Badge, Empty, Loading, MonthPicker, PageHeader, StatCard } from '../components/ui';
-import { BarList, DailyChart, Donut, TrendChart, foldOther, modeColor } from '../components/charts';
+import { useApi, useApp } from '@/context';
+import { currentMonth, inr, monthLabel, niceDate, pct, relativeDay } from '@/lib/format';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
+import { Badge, Empty, IconTile, Loading, MonthPicker, PageHeader, Section, StatCard } from '@/components/common';
+import { BarList, DailyChart, Donut, TrendChart, foldOther, modeColor } from '@/components/charts';
 import { RecommendationList } from './Insights';
 import { CardStatusBadge } from './Cards';
 
 function greeting() {
   const h = new Date().getHours();
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
+}
+
+function AlertLink({ to, icon, tone, title, sub, badge }) {
+  return (
+    <Link to={to} className="group">
+      <Card className="flex items-center gap-3 p-4 transition-colors group-hover:border-primary/40">
+        <IconTile icon={icon} tone={tone} className="h-10 w-10" />
+        <div className="min-w-0 flex-1">
+          <div className="truncate font-medium">{title}</div>
+          <div className="text-xs text-muted-foreground">{sub}</div>
+        </div>
+        {badge}
+      </Card>
+    </Link>
+  );
 }
 
 export default function Dashboard() {
@@ -22,9 +41,9 @@ export default function Dashboard() {
   const { openAddExpense } = useOutletContext();
   const navigate = useNavigate();
 
-  const who = isAdmin ? (viewingAll ? 'everyone' : people.find((p) => String(p.id) === viewing)?.name) : null;
+  const who = isAdmin ? (viewingAll ? 'Everyone' : people.find((p) => String(p.id) === viewing)?.name) : null;
 
-  if (loading && !data) return <Loading />;
+  if (loading && !data) return <Loading rows={5} />;
   if (!data) return null;
 
   const pendingSips = (sips.data || []).filter((s) => s.active && !s.logged_this_month);
@@ -52,7 +71,7 @@ export default function Dashboard() {
               `${data.byCategory.reduce((s, c) => s + c.count, 0)} transactions`
             ) : (
               <span className="inline-flex items-center gap-1">
-                {spendDelta > 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
+                {spendDelta > 0 ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
                 {pct(Math.abs(spendDelta))} {spendDelta > 0 ? 'more' : 'less'} than last month
               </span>
             )
@@ -60,13 +79,13 @@ export default function Dashboard() {
         >
           {data.budget ? (
             <div className="mt-2">
-              <div className="h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-ink-800">
-                <div
-                  className={`h-full rounded-full ${data.expenses > data.budget ? 'bg-red-500' : 'bg-brand-500'}`}
-                  style={{ width: `${Math.min(100, (data.expenses / data.budget) * 100)}%` }}
-                />
-              </div>
-              <div className="muted mt-1 text-[11px]">of {inr(data.budget)} budget</div>
+              <Progress
+                value={(data.expenses / data.budget) * 100}
+                className="h-1.5 bg-muted"
+                indicatorClassName={data.expenses > data.budget ? 'bg-destructive' : 'bg-primary'}
+                aria-label="Budget used"
+              />
+              <div className="mt-1 text-[11px] text-muted-foreground">of {inr(data.budget)} budget</div>
             </div>
           ) : null}
         </StatCard>
@@ -83,117 +102,112 @@ export default function Dashboard() {
       {(cardAlerts.length > 0 || pendingSips.length > 0) && (
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {cardAlerts.map((c) => (
-            <Link to="/cards" key={c.name + c.due_date} className="card card-pad flex items-center gap-3 transition hover:border-brand-300">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300">
-                <CreditCard size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold">{c.name}</div>
-                <div className="muted text-xs">
-                  Bill {inr(c.billed)} · due {niceDate(c.due_date)}
-                </div>
-              </div>
-              <CardStatusBadge status={c.status} days={c.days_to_due} />
-            </Link>
+            <AlertLink
+              key={c.name + c.due_date}
+              to="/cards"
+              icon={CreditCard}
+              tone="warning"
+              title={c.name}
+              sub={`Bill ${inr(c.billed)} · due ${niceDate(c.due_date)}`}
+              badge={<CardStatusBadge status={c.status} days={c.days_to_due} />}
+            />
           ))}
           {pendingSips.slice(0, 4).map((s) => (
-            <Link to="/investments" key={s.id} className="card card-pad flex items-center gap-3 transition hover:border-brand-300">
-              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-50 text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">
-                <CalendarClock size={18} />
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="truncate font-semibold">{s.name}</div>
-                <div className="muted text-xs">
-                  {inr(s.amount)} · {niceDate(s.due_date)}
-                </div>
-              </div>
-              <Badge tone="brand">Not logged</Badge>
-            </Link>
+            <AlertLink
+              key={s.id}
+              to="/investments"
+              icon={CalendarClock}
+              tone="violet"
+              title={s.name}
+              sub={`${inr(s.amount)} · ${niceDate(s.due_date)}`}
+              badge={<Badge tone="brand">Not logged</Badge>}
+            />
           ))}
         </div>
       )}
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
-        <section className="card card-pad lg:col-span-3">
-          <h2 className="font-semibold">Last 6 months</h2>
-          <p className="muted mb-3 text-xs">Earned, spent and invested each month</p>
+        <Section className="lg:col-span-3" title="Last 6 months" description="Earned, spent and invested each month">
           <TrendChart data={data.trend} />
-        </section>
-        <section className="card card-pad lg:col-span-2">
-          <h2 className="font-semibold">How you paid</h2>
-          <p className="muted mb-4 text-xs">UPI, card and cash this month</p>
+        </Section>
+        <Section className="lg:col-span-2" title="How you paid" description="UPI, card and cash this month">
           {data.byMode.length ? (
             <Donut data={data.byMode} colorFor={modeColor} centerLabel="Spent" />
           ) : (
             <Empty icon={Receipt} title="No spending yet" text="Expenses you add will show up here." />
           )}
-        </section>
+        </Section>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
-        <section className="card card-pad lg:col-span-3">
-          <div className="mb-4 flex items-center justify-between">
-            <div>
-              <h2 className="font-semibold">Where it went</h2>
-              <p className="muted text-xs">Spending by category</p>
-            </div>
-            <Link to="/expenses" className="text-sm font-medium text-brand-600 dark:text-brand-300">
-              See all
-            </Link>
-          </div>
+        <Section
+          className="lg:col-span-3"
+          title="Where it went"
+          description="Spending by category"
+          action={
+            <Button variant="link" size="sm" className="h-auto p-0" asChild>
+              <Link to="/expenses">See all</Link>
+            </Button>
+          }
+        >
           {data.byCategory.length ? (
             <BarList rows={foldOther(data.byCategory, 7)} onSelect={(r) => r.key !== 'Other' && navigate(`/expenses?category=${encodeURIComponent(r.key)}`)} />
           ) : (
             <Empty icon={Receipt} title="Nothing spent this month" />
           )}
-        </section>
-        <section className="card card-pad lg:col-span-2">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="flex items-center gap-2 font-semibold">
-              <Sparkles size={16} className="text-violet-500" /> Quick advice
-            </h2>
-            <Link to="/insights" className="text-sm font-medium text-brand-600 dark:text-brand-300">
-              Ask AI
-            </Link>
-          </div>
+        </Section>
+        <Section
+          className="lg:col-span-2"
+          title={
+            <span className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-violet-500" /> Quick advice
+            </span>
+          }
+          action={
+            <Button variant="link" size="sm" className="h-auto p-0" asChild>
+              <Link to="/insights">Ask AI</Link>
+            </Button>
+          }
+        >
           <RecommendationList items={data.advice.recommendations.slice(0, 3)} compact />
-        </section>
+        </Section>
       </div>
 
       <div className="mt-4 grid gap-4 lg:grid-cols-5">
-        <section className="card card-pad lg:col-span-3">
-          <h2 className="font-semibold">Daily spending</h2>
-          <p className="muted mb-3 text-xs">{monthLabel(month)}</p>
+        <Section className="lg:col-span-3" title="Daily spending" description={monthLabel(month)}>
           {data.daily.length ? <DailyChart data={data.daily} /> : <Empty title="No expenses this month" />}
-        </section>
-        <section className="card lg:col-span-2">
-          <div className="flex items-center justify-between px-4 pb-2 pt-4 sm:px-5">
-            <h2 className="font-semibold">Recent</h2>
-            {!viewingAll && (
-              <button className="btn-ghost py-1.5 text-sm" onClick={openAddExpense}>
-                <Plus size={15} /> Add
-              </button>
-            )}
-          </div>
+        </Section>
+        <Section
+          className="lg:col-span-2"
+          bodyClassName="px-0 pb-2 sm:px-0 sm:pb-2"
+          title="Recent"
+          action={
+            !viewingAll && (
+              <Button variant="ghost" size="sm" onClick={openAddExpense}>
+                <Plus /> Add
+              </Button>
+            )
+          }
+        >
           {recent.data?.length ? (
-            <ul className="divide-y divide-black/5 dark:divide-white/5">
+            <ul className="divide-y">
               {recent.data.map((e) => (
                 <li key={e.id} className="flex items-center gap-3 px-4 py-2.5 sm:px-5">
                   <div className="min-w-0 flex-1">
                     <div className="truncate text-sm font-medium">{e.merchant || e.description || e.category}</div>
-                    <div className="muted text-xs">
+                    <div className="text-xs text-muted-foreground">
                       {relativeDay(e.date)} · {e.payment_mode}
                       {viewingAll ? ` · ${e.user_name}` : ''}
                     </div>
                   </div>
-                  <span className="tabular text-sm font-semibold">{inr(e.amount)}</span>
+                  <span className={cn('tabular text-sm font-semibold')}>{inr(e.amount)}</span>
                 </li>
               ))}
             </ul>
           ) : (
             <Empty icon={Receipt} title="No expenses yet" text="Tap + to log your first one." />
           )}
-        </section>
+        </Section>
       </div>
     </>
   );

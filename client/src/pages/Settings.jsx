@@ -1,24 +1,21 @@
 import { useEffect, useState } from 'react';
 import { Bell, BellOff, KeyRound, Moon, Smartphone, Sun, User } from 'lucide-react';
-import { useApp } from '../context';
-import { api } from '../lib/api';
-import { currentSubscription, disablePush, enablePush, pushSupported } from '../lib/push';
-import { ErrorText, Field, PageHeader, toast } from '../components/ui';
+import { useApp } from '@/context';
+import { api } from '@/lib/api';
+import { currentSubscription, disablePush, enablePush, pushSupported } from '@/lib/push';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Separator } from '@/components/ui/separator';
+import { ErrorText, Field, IconTile, PageHeader, Section, toast } from '@/components/common';
 
-function Section({ icon: Icon, title, text, children }) {
+function Heading({ icon, title }) {
   return (
-    <section className="card card-pad">
-      <div className="mb-4 flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-900/40 dark:text-brand-300">
-          <Icon size={18} />
-        </span>
-        <div>
-          <h2 className="font-semibold">{title}</h2>
-          {text && <p className="muted text-sm">{text}</p>}
-        </div>
-      </div>
-      {children}
-    </section>
+    <span className="flex items-center gap-3">
+      <IconTile icon={icon} />
+      {title}
+    </span>
   );
 }
 
@@ -31,7 +28,9 @@ export default function Settings() {
   const [pwError, setPwError] = useState(null);
 
   useEffect(() => {
-    currentSubscription().then((s) => setPushOn(!!s)).catch(() => {});
+    currentSubscription()
+      .then((s) => setPushOn(!!s))
+      .catch(() => {});
   }, []);
 
   async function saveProfile(e) {
@@ -81,67 +80,70 @@ export default function Settings() {
     <>
       <PageHeader title="Settings" subtitle={`Signed in as ${user.username}`} />
       <div className="grid gap-4 lg:grid-cols-2">
-        <Section icon={Bell} title="Reminders" text="A notification every evening to log the day's spending, plus one the day before each credit card bill and SIP.">
-          <form onSubmit={saveProfile} className="space-y-4">
-            <label className="flex items-center gap-3">
-              <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={profile.reminders_enabled} onChange={(e) => setProfile({ ...profile, reminders_enabled: e.target.checked })} />
-              <span className="text-sm font-medium">Send me reminders</span>
-            </label>
-            <Field label="Daily reminder time" hint="Card bill and SIP reminders arrive at 9 AM the day before they're due.">
-              <input className="input sm:max-w-[12rem]" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
+        <Section
+          title={<Heading icon={Bell} title="Reminders" />}
+          description="A notification every evening to log the day's spending, plus one the day before each credit card bill and SIP."
+        >
+          <form onSubmit={saveProfile} className="space-y-5">
+            <div className="flex items-center gap-3">
+              <Switch id="rem-on" checked={profile.reminders_enabled} onCheckedChange={(c) => setProfile({ ...profile, reminders_enabled: c })} />
+              <Label htmlFor="rem-on">Send me reminders</Label>
+            </div>
+            <Field label="Daily reminder time" htmlFor="rem-time" hint="Card bill and SIP reminders arrive at 9 AM the day before they're due.">
+              <Input id="rem-time" className="sm:max-w-[12rem]" type="time" value={profile.reminder_time} onChange={(e) => setProfile({ ...profile, reminder_time: e.target.value })} />
             </Field>
-            <button className="btn-primary">Save reminder settings</button>
+            <Button type="submit">Save reminder settings</Button>
           </form>
-          <div className="mt-5 rounded-xl border border-black/5 p-4 dark:border-white/10">
-            <div className="flex flex-wrap items-center gap-3">
-              {pushOn ? <Bell size={18} className="text-emerald-500" /> : <BellOff size={18} className="muted" />}
-              <div className="flex-1 text-sm">
-                <div className="font-medium">Notifications on this device</div>
-                <div className="muted text-xs">{pushOn ? 'On' : 'Off'} · turn on for each phone or computer you use</div>
-              </div>
-              <button className={pushOn ? 'btn-secondary' : 'btn-primary'} onClick={togglePush} disabled={!pushSupported() && !pushOn}>
-                {pushOn ? 'Turn off' : 'Turn on'}
-              </button>
+          <Separator className="my-5" />
+          <div className="flex flex-wrap items-center gap-3">
+            {pushOn ? <Bell className="h-[18px] w-[18px] text-emerald-500" /> : <BellOff className="h-[18px] w-[18px] text-muted-foreground" />}
+            <div className="flex-1 text-sm">
+              <div className="font-medium">Notifications on this device</div>
+              <div className="text-xs text-muted-foreground">{pushOn ? 'On' : 'Off'} · turn on for each phone or computer you use</div>
             </div>
-            {isIos && !standalone && (
-              <p className="muted mt-3 flex gap-2 text-xs">
-                <Smartphone size={14} className="shrink-0" /> On iPhone: tap Share → “Add to Home Screen”, open the app from there, then turn notifications on.
-              </p>
-            )}
-            <div className="mt-3">
-              <ErrorText error={pushError} />
-            </div>
+            <Button variant={pushOn ? 'outline' : 'default'} onClick={togglePush} disabled={!pushSupported() && !pushOn}>
+              {pushOn ? 'Turn off' : 'Turn on'}
+            </Button>
+          </div>
+          {isIos && !standalone && (
+            <p className="mt-3 flex gap-2 text-xs text-muted-foreground">
+              <Smartphone className="h-3.5 w-3.5 shrink-0" /> On iPhone: tap Share → “Add to Home Screen”, open the app from there, then turn notifications on.
+            </p>
+          )}
+          <div className="mt-3">
+            <ErrorText error={pushError} />
           </div>
         </Section>
 
-        <Section icon={User} title="Profile & budget">
+        <Section title={<Heading icon={User} title="Profile & budget" />}>
           <form onSubmit={saveProfile} className="space-y-4">
-            <Field label="Display name">
-              <input className="input" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+            <Field label="Display name" htmlFor="pf-name">
+              <Input id="pf-name" value={profile.name} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
             </Field>
-            <Field label="Monthly spending budget (₹)" hint="Optional. Shown on your dashboard and used by the advisor.">
-              <input className="input" type="number" min="0" inputMode="decimal" value={profile.monthly_budget} onChange={(e) => setProfile({ ...profile, monthly_budget: e.target.value })} />
+            <Field label="Monthly spending budget (₹)" htmlFor="pf-budget" hint="Optional. Shown on your dashboard and used by the advisor.">
+              <Input id="pf-budget" type="number" min="0" inputMode="decimal" value={profile.monthly_budget} onChange={(e) => setProfile({ ...profile, monthly_budget: e.target.value })} />
             </Field>
-            <button className="btn-primary">Save profile</button>
+            <Button type="submit">Save profile</Button>
           </form>
-          <div className="mt-5 flex items-center justify-between rounded-xl border border-black/5 p-4 dark:border-white/10">
+          <Separator className="my-5" />
+          <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Appearance</span>
-            <button className="btn-secondary" onClick={toggleTheme}>
-              {dark ? <Sun size={16} /> : <Moon size={16} />} {dark ? 'Light mode' : 'Dark mode'}
-            </button>
+            <Button variant="outline" onClick={toggleTheme}>
+              {dark ? <Sun /> : <Moon />} {dark ? 'Light mode' : 'Dark mode'}
+            </Button>
           </div>
         </Section>
 
-        <Section icon={KeyRound} title="Change password">
+        <Section title={<Heading icon={KeyRound} title="Change password" />}>
           <form onSubmit={changePassword} className="space-y-4">
-            <Field label="Current password">
-              <input className="input" type="password" autoComplete="current-password" required value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
+            <Field label="Current password" htmlFor="pw-cur">
+              <Input id="pw-cur" type="password" autoComplete="current-password" required value={pw.current} onChange={(e) => setPw({ ...pw, current: e.target.value })} />
             </Field>
-            <Field label="New password" hint="At least 6 characters">
-              <input className="input" type="password" autoComplete="new-password" required minLength={6} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
+            <Field label="New password" htmlFor="pw-new" hint="At least 6 characters">
+              <Input id="pw-new" type="password" autoComplete="new-password" required minLength={6} value={pw.next} onChange={(e) => setPw({ ...pw, next: e.target.value })} />
             </Field>
             <ErrorText error={pwError} />
-            <button className="btn-primary">Update password</button>
+            <Button type="submit">Update password</Button>
           </form>
         </Section>
       </div>

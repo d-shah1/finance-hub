@@ -1,10 +1,13 @@
 import { useState } from 'react';
 import { Plus, Wallet } from 'lucide-react';
-import { useApi, useApp } from '../context';
-import { inr, niceDate, todayIso } from '../lib/format';
-import { Badge, Empty, Loading, PageHeader } from '../components/ui';
-import { BarList, TrendChart } from '../components/charts';
-import EntityForm from '../components/EntityForm';
+import { useApi, useApp } from '@/context';
+import { inr, niceDate, todayIso } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge, Empty, IconTile, Loading, PageHeader, Section } from '@/components/common';
+import { BarList, TrendChart } from '@/components/charts';
+import EntityForm from '@/components/EntityForm';
 
 export default function Income() {
   const { meta, viewingAll } = useApp();
@@ -25,11 +28,15 @@ export default function Income() {
   ];
 
   const total = (data || []).reduce((s, r) => s + r.amount, 0);
-  const byType = Object.entries(
-    (data || []).reduce((acc, r) => ({ ...acc, [r.type]: (acc[r.type] || 0) + r.amount }), {})
-  )
+  const byType = Object.entries((data || []).reduce((acc, r) => ({ ...acc, [r.type]: (acc[r.type] || 0) + r.amount }), {}))
     .map(([key, t]) => ({ key, total: t }))
     .sort((a, b) => b.total - a.total);
+
+  const addButton = (
+    <Button onClick={() => setAdding(true)}>
+      <Plus /> Add earning
+    </Button>
+  );
 
   return (
     <>
@@ -38,59 +45,51 @@ export default function Income() {
         subtitle="Salary, freelance and every other rupee coming in"
         actions={
           <>
-            <select className="input w-auto py-2" value={range} onChange={(e) => setRange(e.target.value)}>
-              <option value="year">This year</option>
-              <option value="12m">Last 12 months</option>
-              <option value="all">All time</option>
-            </select>
-            {!viewingAll && (
-              <button className="btn-primary" onClick={() => setAdding(true)}>
-                <Plus size={16} /> Add earning
-              </button>
-            )}
+            <Select value={range} onValueChange={setRange}>
+              <SelectTrigger className="w-40 bg-card">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="year">This year</SelectItem>
+                <SelectItem value="12m">Last 12 months</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            {!viewingAll && addButton}
           </>
         }
       />
 
       <div className="grid gap-4 lg:grid-cols-3">
-        <section className="card card-pad">
-          <span className="muted text-sm font-medium">Total earned</span>
-          <div className="mt-1 text-3xl font-bold tracking-tight">{inr(total)}</div>
-          <div className="muted mt-1 text-xs">{data?.length || 0} entries</div>
+        <Card className="p-5">
+          <span className="text-sm font-medium text-muted-foreground">Total earned</span>
+          <div className="mt-1 text-3xl font-semibold tracking-tight">{inr(total)}</div>
+          <div className="mt-1 text-xs text-muted-foreground">{data?.length || 0} entries</div>
           {byType.length > 0 && (
             <div className="mt-5">
               <BarList rows={byType} />
             </div>
           )}
-        </section>
-        <section className="card card-pad lg:col-span-2">
-          <h2 className="font-semibold">Earned vs spent</h2>
-          <p className="muted mb-3 text-xs">Last 6 months</p>
+        </Card>
+        <Section className="lg:col-span-2" title="Earned vs spent" description="Last 6 months">
           {summary.data && <TrendChart data={summary.data.trend} height={240} />}
-        </section>
+        </Section>
       </div>
 
-      <section className="card mt-4 overflow-hidden">
+      <Card className="mt-4 overflow-hidden">
         {loading && !data ? (
           <Loading />
         ) : !data?.length ? (
-          <Empty
-            icon={Wallet}
-            title="No earnings recorded"
-            text="Add your salary and other income so the AI advisor can work out how much to invest."
-            action={!viewingAll && <button className="btn-primary" onClick={() => setAdding(true)}><Plus size={16} /> Add earning</button>}
-          />
+          <Empty icon={Wallet} title="No earnings recorded" text="Add your salary and other income so the AI advisor can work out how much to invest." action={!viewingAll && addButton} />
         ) : (
-          <ul className="divide-y divide-black/5 dark:divide-white/5">
+          <ul className="divide-y">
             {data.map((r) => (
               <li key={r.id}>
-                <button className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-ink-850 sm:px-5" onClick={() => setEditing(r)}>
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300">
-                    <Wallet size={18} />
-                  </span>
+                <button className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-muted/50 sm:px-5" onClick={() => setEditing(r)}>
+                  <IconTile icon={Wallet} tone="good" className="h-10 w-10" />
                   <div className="min-w-0 flex-1">
                     <div className="truncate font-medium">{r.source}</div>
-                    <div className="muted text-xs">
+                    <div className="text-xs text-muted-foreground">
                       {niceDate(r.date, { day: 'numeric', month: 'short', year: 'numeric' })}
                       {viewingAll ? ` · ${r.user_name}` : ''}
                       {r.notes ? ` · ${r.notes}` : ''}
@@ -103,7 +102,7 @@ export default function Income() {
             ))}
           </ul>
         )}
-      </section>
+      </Card>
 
       <EntityForm
         open={adding || !!editing}

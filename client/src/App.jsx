@@ -1,7 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useApp } from './context';
 import Layout from './components/Layout';
-import { Loading } from './components/ui';
+import { Loading } from './components/common';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Expenses from './pages/Expenses';

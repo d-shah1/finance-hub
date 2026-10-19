@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
-import { api } from '../lib/api';
-import { useApp } from '../context';
-import { ConfirmDelete, ErrorText, Field, Modal, Segmented, toast } from './ui';
+import { api } from '@/lib/api';
+import { useApp } from '@/context';
+import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Switch } from '@/components/ui/switch';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { ConfirmDelete, ErrorText, Field, Modal, Segmented, toast } from './common';
 
 /**
  * Modal create/edit form driven by a field list.
@@ -29,9 +35,7 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
     setError(null);
     try {
       const body = Object.fromEntries(fields.map((f) => [f.name, form[f.name]]));
-      const saved = record
-        ? await api(`${endpoint}/${record.id}`, { method: 'PUT', body })
-        : await api(endpoint, { method: 'POST', body });
+      const saved = record ? await api(`${endpoint}/${record.id}`, { method: 'PUT', body }) : await api(endpoint, { method: 'POST', body });
       toast(`${noun} ${record ? 'updated' : 'added'}`);
       refresh();
       onSaved?.(saved);
@@ -60,82 +64,93 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
       footer={
         <>
           {record && <ConfirmDelete onConfirm={remove} />}
-          <div className="flex-1" />
-          <button type="button" className="btn-secondary" onClick={onClose}>
+          <div className="hidden flex-1 sm:block" />
+          <Button type="button" variant="outline" onClick={onClose}>
             Cancel
-          </button>
-          <button form="entity-form" className="btn-primary" disabled={saving || blocked}>
+          </Button>
+          <Button form="entity-form" type="submit" disabled={saving || blocked}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </Button>
         </>
       }
     >
       <form id="entity-form" onSubmit={save} className="grid gap-4 sm:grid-cols-2">
         {blocked && (
-          <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 sm:col-span-2">
+          <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 sm:col-span-2">
             You are viewing everyone. Pick a person in the top bar to add this for them.
           </p>
         )}
         {fields.map((f) => {
           const v = form[f.name] ?? '';
           const span = f.span === 2 ? 'sm:col-span-2' : '';
+          const id = `ef-${f.name}`;
           if (f.type === 'segmented') {
             return (
-              <div key={f.name} className={span || 'sm:col-span-2'}>
-                <span className="label">{f.label}</span>
+              <Field key={f.name} label={f.label} className={span || 'sm:col-span-2'}>
                 <Segmented size="sm" options={f.options} value={v} onChange={(x) => set(f.name, x)} />
-              </div>
+              </Field>
             );
           }
           if (f.type === 'toggle') {
             return (
-              <label key={f.name} className={`flex items-center gap-3 ${span}`}>
-                <input type="checkbox" className="h-4 w-4 accent-brand-500" checked={!!Number(v)} onChange={(e) => set(f.name, e.target.checked ? 1 : 0)} />
-                <span className="text-sm font-medium">{f.label}</span>
-              </label>
+              <div key={f.name} className={cn('flex items-center gap-3 self-end pb-1.5', span)}>
+                <Switch id={id} checked={!!Number(v)} onCheckedChange={(c) => set(f.name, c ? 1 : 0)} />
+                <Label htmlFor={id}>{f.label}</Label>
+              </div>
             );
           }
-          return (
-            <Field key={f.name} label={f.label} hint={f.hint} className={span}>
-              {f.type === 'select' ? (
-                <select className="input" required={f.required} value={v} onChange={(e) => set(f.name, e.target.value)}>
-                  {!f.required && <option value="">—</option>}
-                  {f.options.map((o) => {
-                    const opt = typeof o === 'object' ? o : { value: o, label: o };
-                    return (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
-                    );
-                  })}
-                </select>
-              ) : f.type === 'color' ? (
+          if (f.type === 'select') {
+            const opts = f.options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+            return (
+              <Field key={f.name} label={f.label} hint={f.hint} className={span}>
+                <Select value={v === '' ? undefined : String(v)} onValueChange={(x) => set(f.name, x)}>
+                  <SelectTrigger id={id}>
+                    <SelectValue placeholder="Select…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opts.map((o) => (
+                      <SelectItem key={o.value} value={String(o.value)}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            );
+          }
+          if (f.type === 'color') {
+            return (
+              <Field key={f.name} label={f.label} className={span}>
                 <div className="flex flex-wrap gap-2">
                   {f.options.map((c) => (
                     <button
                       type="button"
                       key={c}
                       onClick={() => set(f.name, c)}
-                      className={`h-8 w-8 rounded-full ring-offset-2 transition dark:ring-offset-ink-900 ${v === c ? 'ring-2 ring-slate-900 dark:ring-white' : ''}`}
+                      className={cn('h-8 w-8 rounded-full ring-offset-2 ring-offset-background transition', v === c && 'ring-2 ring-foreground')}
                       style={{ background: c }}
                       aria-label={`Colour ${c}`}
+                      aria-pressed={v === c}
                     />
                   ))}
                 </div>
-              ) : (
-                <input
-                  className="input"
-                  type={f.type || 'text'}
-                  required={f.required}
-                  step={f.type === 'number' ? f.step || 'any' : undefined}
-                  min={f.min}
-                  max={f.max}
-                  inputMode={f.type === 'number' ? 'decimal' : undefined}
-                  placeholder={f.placeholder}
-                  value={v}
-                  onChange={(e) => set(f.name, e.target.value)}
-                />
-              )}
+              </Field>
+            );
+          }
+          return (
+            <Field key={f.name} label={f.label} hint={f.hint} className={span} htmlFor={id}>
+              <Input
+                id={id}
+                type={f.type || 'text'}
+                required={f.required}
+                step={f.type === 'number' ? f.step || 'any' : undefined}
+                min={f.min}
+                max={f.max}
+                inputMode={f.type === 'number' ? 'decimal' : undefined}
+                placeholder={f.placeholder}
+                value={v}
+                onChange={(e) => set(f.name, e.target.value)}
+              />
             </Field>
           );
         })}
