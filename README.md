@@ -13,7 +13,7 @@ A personal finance tracker for **Darsh**, **Bhakti** and an **admin** who can se
 
 ## Run it
 
-Needs **Node.js 22.13 or newer**. It uses Node's built-in SQLite, so nothing needs compiling.
+Needs **Node.js 22**.
 
 ```bash
 npm install
@@ -53,22 +53,55 @@ Restart the server. The AI advisor page shows which one is in use. Free tiers ha
 Notes:
 - Push notifications need the app served over **HTTPS** (or `localhost`).
 - **iPhone**: open the site in Safari, tap Share → **Add to Home Screen**, open the app from the home screen, then turn notifications on (iOS 16.4+).
-- The server must be running at reminder time to send them. Free hosts that "sleep" when idle will miss reminders (see below).
+- Reminders are sent by the server's scheduler, or on Vercel by the cron job (see below).
 
-## Hosting
+## Deploy free on Vercel
 
-The app is a single Node process with a SQLite file, so any host with a **persistent disk** works:
+Vercel's free plan has no permanent disk and its free cron only runs once a day, so the hosted setup uses two other free services:
+**Turso** for the database (hosted SQLite) and **cron-job.org** for the evening reminders. Takes about 10 minutes.
 
-- A home computer or Raspberry Pi, with a free tunnel such as Cloudflare Tunnel for HTTPS
-- An Oracle Cloud "Always Free" VM, or any small VPS
-- Railway or Fly.io, with a volume mounted at `./data`
+### 1. Create the database (Turso, free)
+1. Sign up at https://turso.tech and create a database. Pick the region closest to you, e.g. Mumbai (`aws-ap-south-1`).
+2. On the database page, copy the **URL** (`libsql://….turso.io`) and click **Create token** to get an **auth token**.
 
-Set `NODE_ENV=production`, a long random `JWT_SECRET`, and `TZ_NAME` (defaults to `Asia/Kolkata`). Back up `data/finance.db` now and then.
+### 2. Deploy (Vercel, free)
+1. At https://vercel.com/new, import the `finance-hub` GitHub repository. Leave Framework Preset as **Other**. `vercel.json` already sets the build.
+2. Before clicking Deploy, open **Environment Variables** and add:
+
+| Name | Value |
+|------|-------|
+| `DATABASE_URL` | the Turso URL |
+| `DATABASE_AUTH_TOKEN` | the Turso token |
+| `JWT_SECRET` | a long random string (e.g. from https://generate-random.org/api-key-generator) |
+| `CRON_SECRET` | another long random string |
+| `DARSH_PASSWORD` | Darsh's first password |
+| `BHAKTI_PASSWORD` | Bhakti's first password |
+| `ADMIN_PASSWORD` | the admin's first password |
+| `GROQ_API_KEY` *(or `GEMINI_API_KEY`)* | optional, for written AI advice |
+| `TZ_NAME` | optional, defaults to `Asia/Kolkata` |
+
+   The app will not start on Vercel without `JWT_SECRET` and the three passwords, so the default `admin123`-style passwords are never online.
+3. Click **Deploy**. Open the `…vercel.app` link and sign in.
+
+### 3. Turn on the evening reminders (cron-job.org, free)
+1. Sign up at https://cron-job.org and create a cron job:
+   - URL: `https://<your-app>.vercel.app/api/cron?key=<your CRON_SECRET>`
+   - Schedule: every 10 minutes
+2. Save. Each person then opens **Settings → Turn on** notifications on their phone.
+
+Vercel's own daily cron (09:00 IST) also calls `/api/cron`, so card-due and SIP alerts still go out once a day even without cron-job.org. The "log today's transactions" reminder at your chosen time needs the 10-minute job.
+
+Changed a variable later? Redeploy from the Vercel dashboard (Deployments → ⋯ → Redeploy) so it takes effect.
+
+## Other hosting
+
+To run it as a normal long-lived server instead (a home computer with Cloudflare Tunnel, an Oracle Cloud "Always Free" VM, Railway, Fly.io…), use `npm run build && npm start`. Data lives in `data/finance.db` (back it up now and then), or point `DATABASE_URL` at Turso. Reminders are sent by the built-in scheduler, so no cron service is needed.
 
 ## Project layout
 
 ```
-server/            Express API, SQLite schema, reminder scheduler, AI + rule-based advisor
+api/index.js       Vercel serverless entry (wraps the Express app)
+server/            Express API, SQLite/libSQL schema, reminder scheduler, AI + rule-based advisor
   routes/          expenses, income, investments & SIPs, holdings, cards, insights, push, users
   lib/             auth, CRUD helper, card billing cycle, insights, LLM client, push, scheduler
   test/            API tests (npm test)

@@ -17,70 +17,69 @@ const CATEGORY_LIMITS = {
 
 const WANT_CATEGORIES = new Set(['Food & Dining', 'Shopping', 'Entertainment', 'Subscriptions', 'Travel', 'Personal Care', 'Gifts & Donations']);
 
-function sum(table, uid, from, to, extra = '') {
+async function sum(table, uid, from, to, extra = '') {
   const where = uid !== null ? 'user_id = ? AND' : '';
   const params = uid !== null ? [uid, from, to] : [from, to];
-  return db.prepare(`SELECT COALESCE(SUM(amount), 0) AS t FROM ${table} WHERE ${where} date BETWEEN ? AND ? ${extra}`).get(...params).t;
+  return (await db.get(`SELECT COALESCE(SUM(amount), 0) AS t FROM ${table} WHERE ${where} date BETWEEN ? AND ? ${extra}`, ...params)).t;
 }
 
 function groupBy(column, uid, from, to) {
   const where = uid !== null ? 'user_id = ? AND' : '';
   const params = uid !== null ? [uid, from, to] : [from, to];
-  return db
-    .prepare(
-      `SELECT ${column} AS key, SUM(amount) AS total, COUNT(*) AS count FROM expenses
-       WHERE ${where} date BETWEEN ? AND ? GROUP BY ${column} ORDER BY total DESC`
-    )
-    .all(...params);
+  return db.all(
+    `SELECT ${column} AS key, SUM(amount) AS total, COUNT(*) AS count FROM expenses
+     WHERE ${where} date BETWEEN ? AND ? GROUP BY ${column} ORDER BY total DESC`,
+    ...params
+  );
 }
 
 /** Collects the numbers the dashboard and the AI advisor work from. uid null = everyone. */
-export function buildSummary(uid, month) {
+export async function buildSummary(uid, month) {
   const now = nowParts();
   const ym = month || `${now.year}-${pad(now.month)}`;
   const { from, to } = monthRange(ym);
+  const own = uid !== null ? [uid] : [];
+  const uw = uid !== null ? 'WHERE e.user_id = ? AND' : 'WHERE';
+  const uwParams = uid !== null ? [uid, from, to] : [from, to];
 
-  const trend = [];
-  for (let i = 5; i >= 0; i--) {
-    const m = shiftMonth(ym, -i);
-    const r = monthRange(m);
-    trend.push({
-      month: m,
-      income: sum('income', uid, r.from, r.to),
-      expenses: sum('expenses', uid, r.from, r.to),
-      investments: sum('investments', uid, r.from, r.to),
-    });
-  }
+  const months = [5, 4, 3, 2, 1, 0].map((i) => shiftMonth(ym, -i));
+  // Independent queries run in parallel: each is a network round-trip on a hosted database.
+  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow] =
+    await Promise.all([
+      Promise.all(
+        months.map(async (m) => {
+          const r = monthRange(m);
+          const [inc, exp, inv] = await Promise.all([sum('income', uid, r.from, r.to), sum('expenses', uid, r.from, r.to), sum('investments', uid, r.from, r.to)]);
+          return { month: m, income: inc, expenses: exp, investments: inv };
+        })
+      ),
+      sum('income', uid, from, to),
+      sum('expenses', uid, from, to),
+      sum('investments', uid, from, to),
+      sum('expenses', uid, from, to, 'AND is_need = 0'),
+      groupBy('category', uid, from, to),
+      groupBy('payment_mode', uid, from, to),
+      db.all(
+        `SELECT merchant AS key, SUM(amount) AS total, COUNT(*) AS count FROM expenses e
+         ${uw} date BETWEEN ? AND ? AND merchant IS NOT NULL AND merchant != ''
+         GROUP BY merchant COLLATE NOCASE ORDER BY total DESC LIMIT 5`,
+        ...uwParams
+      ),
+      db.all(`SELECT date, SUM(amount) AS total FROM expenses e ${uw} date BETWEEN ? AND ? GROUP BY date ORDER BY date`, ...uwParams),
+      db.all(`SELECT * FROM holdings ${uid !== null ? 'WHERE user_id = ?' : ''}`, ...own),
+      db.all(`SELECT name, type, amount FROM sips WHERE active = 1 ${uid !== null ? 'AND user_id = ?' : ''}`, ...own),
+      db.get(`SELECT COALESCE(SUM(amount), 0) AS t FROM investments ${uid !== null ? 'WHERE user_id = ?' : ''}`, ...own),
+      db.all(`SELECT type AS key, SUM(amount) AS total FROM investments ${uid !== null ? 'WHERE user_id = ?' : ''} GROUP BY type ORDER BY total DESC`, ...own),
+      cardsOverview(uid),
+      uid !== null ? db.get('SELECT monthly_budget FROM users WHERE id = ?', uid) : null,
+    ]);
+
   const recent = trend.slice(-3);
   const withIncome = recent.filter((t) => t.income > 0);
   const avgIncome = withIncome.length ? withIncome.reduce((s, t) => s + t.income, 0) / withIncome.length : 0;
   const withSpend = recent.filter((t) => t.expenses > 0);
   const avgExpenses = withSpend.length ? withSpend.reduce((s, t) => s + t.expenses, 0) / withSpend.length : 0;
 
-  const income = sum('income', uid, from, to);
-  const expenses = sum('expenses', uid, from, to);
-  const invested = sum('investments', uid, from, to);
-  const wants = sum('expenses', uid, from, to, 'AND is_need = 0');
-
-  const byCategory = groupBy('category', uid, from, to);
-  const byMode = groupBy('payment_mode', uid, from, to);
-
-  const uw = uid !== null ? 'WHERE e.user_id = ? AND' : 'WHERE';
-  const uwParams = uid !== null ? [uid, from, to] : [from, to];
-  const topMerchants = db
-    .prepare(
-      `SELECT merchant AS key, SUM(amount) AS total, COUNT(*) AS count FROM expenses e
-       ${uw} date BETWEEN ? AND ? AND merchant IS NOT NULL AND merchant != ''
-       GROUP BY merchant COLLATE NOCASE ORDER BY total DESC LIMIT 5`
-    )
-    .all(...uwParams);
-  const daily = db
-    .prepare(`SELECT date, SUM(amount) AS total FROM expenses e ${uw} date BETWEEN ? AND ? GROUP BY date ORDER BY date`)
-    .all(...uwParams);
-
-  const holdingRows = db
-    .prepare(`SELECT * FROM holdings ${uid !== null ? 'WHERE user_id = ?' : ''}`)
-    .all(...(uid !== null ? [uid] : []));
   const holdings = holdingRows.map((h) => {
     const cost = h.quantity * h.avg_price;
     const value = h.quantity * (h.current_price ?? h.avg_price);
@@ -88,23 +87,6 @@ export function buildSummary(uid, month) {
   });
   const portfolioCost = holdings.reduce((s, h) => s + h.cost, 0);
   const portfolioValue = holdings.reduce((s, h) => s + h.value, 0);
-
-  const sips = db
-    .prepare(`SELECT name, type, amount FROM sips WHERE active = 1 ${uid !== null ? 'AND user_id = ?' : ''}`)
-    .all(...(uid !== null ? [uid] : []));
-  const sipMonthly = sips.reduce((s, x) => s + x.amount, 0);
-
-  const totalInvestedAllTime = db
-    .prepare(`SELECT COALESCE(SUM(amount), 0) AS t FROM investments ${uid !== null ? 'WHERE user_id = ?' : ''}`)
-    .get(...(uid !== null ? [uid] : [])).t;
-  const investByType = db
-    .prepare(
-      `SELECT type AS key, SUM(amount) AS total FROM investments ${uid !== null ? 'WHERE user_id = ?' : ''} GROUP BY type ORDER BY total DESC`
-    )
-    .all(...(uid !== null ? [uid] : []));
-
-  const cards = cardsOverview(uid);
-  const budget = uid !== null ? db.prepare('SELECT monthly_budget FROM users WHERE id = ?').get(uid)?.monthly_budget : null;
 
   return {
     month: ym,
@@ -117,15 +99,15 @@ export function buildSummary(uid, month) {
     savingsRate: pct(income - expenses, income),
     avgIncome,
     avgExpenses,
-    budget,
+    budget: budgetRow?.monthly_budget ?? null,
     trend,
     byCategory,
     byMode,
     topMerchants,
     daily,
     sips,
-    sipMonthly,
-    totalInvestedAllTime,
+    sipMonthly: sips.reduce((s, x) => s + x.amount, 0),
+    totalInvestedAllTime: allTime.t,
     investByType,
     portfolio: {
       cost: portfolioCost,

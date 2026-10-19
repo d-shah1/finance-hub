@@ -1,17 +1,38 @@
-import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
 import bcrypt from 'bcryptjs';
 import { config } from './config.js';
 
-if (config.dbPath !== ':memory:') {
-  fs.mkdirSync(path.dirname(config.dbPath), { recursive: true });
+// Local runs use a SQLite file; on Vercel DATABASE_URL points at a Turso (hosted libSQL) database.
+if (config.dbUrl.startsWith('file:')) {
+  fs.mkdirSync(path.dirname(config.dbUrl.slice(5)), { recursive: true });
 }
 
-export const db = new DatabaseSync(config.dbPath);
-db.exec('PRAGMA journal_mode = WAL; PRAGMA foreign_keys = ON;');
+// The web (HTTP) client has no native module, which keeps the Vercel function small and portable.
+const local = config.dbUrl === ':memory:' || config.dbUrl.startsWith('file:');
+const { createClient } = local ? await import('@libsql/client') : await import('@libsql/client/web');
 
-db.exec(`
+export const client = createClient({ url: config.dbUrl, authToken: config.dbToken || undefined });
+
+const toRow = (r) => (r ? { ...r } : undefined);
+
+/** Small async query helpers shared by every module. */
+export const db = {
+  async all(sql, ...args) {
+    const rs = await client.execute({ sql, args });
+    return rs.rows.map(toRow);
+  },
+  async get(sql, ...args) {
+    const rs = await client.execute({ sql, args });
+    return toRow(rs.rows[0]);
+  },
+  async run(sql, ...args) {
+    const rs = await client.execute({ sql, args });
+    return { changes: rs.rowsAffected, lastInsertRowid: rs.lastInsertRowid === undefined ? undefined : Number(rs.lastInsertRowid) };
+  },
+};
+
+const SCHEMA = `
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE COLLATE NOCASE,
@@ -151,28 +172,39 @@ CREATE TABLE IF NOT EXISTS sent_notifications (
   key TEXT PRIMARY KEY,
   sent_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-`);
+`;
 
-export function getSetting(key) {
-  return db.prepare('SELECT value FROM app_settings WHERE key = ?').get(key)?.value;
+let ready;
+/**
+ * Creates tables and starter accounts once per process (each serverless cold start).
+ * Resolves to the accounts created on this call, which is empty unless the database was new.
+ */
+export function init() {
+  ready ??= (async () => {
+    await client.executeMultiple(SCHEMA);
+    return seedUsers();
+  })().catch((e) => {
+    ready = undefined;
+    throw e;
+  });
+  return ready;
 }
 
-export function setSetting(key, value) {
-  db.prepare(
-    'INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value'
-  ).run(key, value);
+export async function getSetting(key) {
+  return (await db.get('SELECT value FROM app_settings WHERE key = ?', key))?.value;
+}
+
+export async function setSetting(key, value) {
+  await db.run('INSERT INTO app_settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value', key, value);
 }
 
 /** Creates the initial accounts (Darsh, Bhakti, admin) on first run. */
-export function seedUsers() {
-  const count = db.prepare('SELECT COUNT(*) AS n FROM users').get().n;
-  if (count > 0) return [];
-  const insert = db.prepare(
-    'INSERT INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)'
-  );
+export async function seedUsers() {
+  const { n } = await db.get('SELECT COUNT(*) AS n FROM users');
+  if (n > 0) return [];
   const created = [];
   for (const u of config.seedUsers) {
-    insert.run(u.username, u.name, bcrypt.hashSync(u.password, 10), u.role);
+    await db.run('INSERT OR IGNORE INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)', u.username, u.name, bcrypt.hashSync(u.password, 10), u.role);
     created.push(u);
   }
   return created;

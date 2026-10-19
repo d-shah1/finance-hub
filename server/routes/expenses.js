@@ -33,7 +33,7 @@ export default crudRouter({
     }
     return { clauses, params };
   },
-  beforeSave(row, req, existing) {
+  async beforeSave(row, req, existing) {
     if (row.category !== undefined && !EXPENSE_CATEGORIES.includes(row.category)) {
       // Custom categories are allowed but kept tidy.
       row.category = row.category.slice(0, 40);
@@ -44,7 +44,7 @@ export default crudRouter({
     const cardId = row.card_id ?? (mode === 'Card' ? existing?.card_id : null);
     if (mode === 'Card' && cardId) {
       const ownerId = existing?.user_id ?? row.user_id;
-      const card = db.prepare('SELECT user_id FROM cards WHERE id = ?').get(cardId);
+      const card = await db.get('SELECT user_id FROM cards WHERE id = ?', cardId);
       if (!card || card.user_id !== ownerId) throw new ValidationError('That card does not belong to this account');
     }
   },

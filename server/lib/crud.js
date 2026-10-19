@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../db.js';
-import { canTouch, ownerIdForWrite, scopeUserId } from './auth.js';
+import { ah, canTouch, ownerIdForWrite, scopeUserId } from './auth.js';
 
 export class ValidationError extends Error {
   constructor(message) {
@@ -55,12 +55,14 @@ export function parseBody(body, fields, { partial = false } = {}) {
  * Builds list/create/update/delete routes for a user-owned table.
  *
  * options.filters(req) returns extra { clauses: [], params: [] } for listing.
- * options.beforeSave(row, req, existing) may validate or adjust a row before it is written.
+ * options.beforeSave(row, req, existing) may validate or adjust a row before it is written (can be async).
+ * options.onDelete(existing) cleans up rows that reference it. Foreign-key cascades are not relied on
+ * because hosted libSQL connections do not always enforce them.
  */
-export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, filters, beforeSave }) {
+export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, filters, beforeSave, onDelete }) {
   const router = express.Router();
 
-  router.get('/', (req, res) => {
+  router.get('/', ah(async (req, res) => {
     const clauses = [];
     const params = [];
     const uid = scopeUserId(req);
@@ -83,46 +85,45 @@ export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, fil
     }
     const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
     const limit = Math.min(Number(req.query.limit) || 1000, 5000);
-    const rows = db
-      .prepare(
-        `SELECT t.*, u.name AS user_name FROM ${table} t JOIN users u ON u.id = t.user_id ${where} ORDER BY ${orderBy} LIMIT ${limit}`
+    res.json(
+      await db.all(
+        `SELECT t.*, u.name AS user_name FROM ${table} t JOIN users u ON u.id = t.user_id ${where} ORDER BY ${orderBy} LIMIT ${limit}`,
+        ...params
       )
-      .all(...params);
-    res.json(rows);
-  });
+    );
+  }));
 
-  router.post('/', (req, res) => {
+  router.post('/', ah(async (req, res) => {
     const row = parseBody(req.body, fields);
     row.user_id = ownerIdForWrite(req);
-    beforeSave?.(row, req, null);
+    await beforeSave?.(row, req, null);
     const cols = Object.keys(row);
-    const info = db
-      .prepare(`INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`)
-      .run(...cols.map((c) => row[c]));
-    res.status(201).json(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(info.lastInsertRowid));
-  });
+    const info = await db.run(
+      `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      ...cols.map((c) => row[c])
+    );
+    res.status(201).json(await db.get(`SELECT * FROM ${table} WHERE id = ?`, info.lastInsertRowid));
+  }));
 
-  router.put('/:id', (req, res) => {
-    const existing = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(req.params.id);
+  router.put('/:id', ah(async (req, res) => {
+    const existing = await db.get(`SELECT * FROM ${table} WHERE id = ?`, req.params.id);
     if (!canTouch(req, existing)) return res.status(404).json({ error: 'Not found' });
     const row = parseBody(req.body, fields, { partial: true });
-    beforeSave?.(row, req, existing);
+    await beforeSave?.(row, req, existing);
     const cols = Object.keys(row);
     if (cols.length) {
-      db.prepare(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(
-        ...cols.map((c) => row[c]),
-        existing.id
-      );
+      await db.run(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => row[c]), existing.id);
     }
-    res.json(db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(existing.id));
-  });
+    res.json(await db.get(`SELECT * FROM ${table} WHERE id = ?`, existing.id));
+  }));
 
-  router.delete('/:id', (req, res) => {
-    const existing = db.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(req.params.id);
+  router.delete('/:id', ah(async (req, res) => {
+    const existing = await db.get(`SELECT * FROM ${table} WHERE id = ?`, req.params.id);
     if (!canTouch(req, existing)) return res.status(404).json({ error: 'Not found' });
-    db.prepare(`DELETE FROM ${table} WHERE id = ?`).run(existing.id);
+    await onDelete?.(existing);
+    await db.run(`DELETE FROM ${table} WHERE id = ?`, existing.id);
     res.json({ ok: true });
-  });
+  }));
 
   return router;
 }

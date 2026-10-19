@@ -1,6 +1,6 @@
 import { db } from '../db.js';
 import { crudRouter } from '../lib/crud.js';
-import { scopeUserId } from '../lib/auth.js';
+import { ah, scopeUserId } from '../lib/auth.js';
 
 const router = crudRouter({
   table: 'holdings',
@@ -40,17 +40,14 @@ async function fetchPrice(symbol) {
  * Best-effort refresh of current prices from Yahoo Finance's free public chart endpoint.
  * Holdings that fail keep their manually entered price.
  */
-router.post('/refresh-prices', async (req, res) => {
+router.post('/refresh-prices', ah(async (req, res) => {
   const uid = scopeUserId(req);
-  const holdings = db
-    .prepare(`SELECT * FROM holdings ${uid !== null ? 'WHERE user_id = ?' : ''}`)
-    .all(...(uid !== null ? [uid] : []));
-  const update = db.prepare("UPDATE holdings SET current_price = ?, price_updated_at = datetime('now') WHERE id = ?");
+  const holdings = await db.all(`SELECT * FROM holdings ${uid !== null ? 'WHERE user_id = ?' : ''}`, ...(uid !== null ? [uid] : []));
   const results = await Promise.all(
     holdings.map(async (h) => {
       try {
         const price = await fetchPrice(yahooSymbol(h));
-        update.run(price, h.id);
+        await db.run("UPDATE holdings SET current_price = ?, price_updated_at = datetime('now') WHERE id = ?", price, h.id);
         return { id: h.id, symbol: h.symbol, price, ok: true };
       } catch (e) {
         return { id: h.id, symbol: h.symbol, ok: false, error: e.message };
@@ -58,6 +55,6 @@ router.post('/refresh-prices', async (req, res) => {
     })
   );
   res.json({ updated: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok), results });
-});
+}));
 
 export default router;

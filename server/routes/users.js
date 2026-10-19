@@ -1,7 +1,7 @@
 import express from 'express';
 import bcrypt from 'bcryptjs';
-import { db } from '../db.js';
-import { clearSession, issueSession, publicUser, requireAdmin, requireAuth } from '../lib/auth.js';
+import { client, db } from '../db.js';
+import { ah, clearSession, issueSession, publicUser, requireAdmin, requireAuth } from '../lib/auth.js';
 import { parseBody } from '../lib/crud.js';
 
 const router = express.Router();
@@ -21,12 +21,12 @@ function recordFail(key) {
   else rec.count++;
 }
 
-router.post('/auth/login', (req, res) => {
+router.post('/auth/login', ah(async (req, res) => {
   const username = String(req.body?.username || '').trim();
   const password = String(req.body?.password || '');
   const key = `${username.toLowerCase()}|${req.ip}`;
   if (tooMany(key)) return res.status(429).json({ error: 'Too many attempts. Try again in a few minutes.' });
-  const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
+  const user = await db.get('SELECT * FROM users WHERE username = ?', username);
   if (!user || !bcrypt.compareSync(password, user.password_hash)) {
     recordFail(key);
     return res.status(401).json({ error: 'Wrong username or password' });
@@ -34,7 +34,7 @@ router.post('/auth/login', (req, res) => {
   attempts.delete(key);
   issueSession(res, user);
   res.json(publicUser(user));
-});
+}));
 
 router.post('/auth/logout', (req, res) => {
   clearSession(res);
@@ -45,7 +45,7 @@ router.use(requireAuth);
 
 router.get('/me', (req, res) => res.json(publicUser(req.user)));
 
-router.put('/me', (req, res) => {
+router.put('/me', ah(async (req, res) => {
   const row = parseBody(
     req.body,
     {
@@ -63,58 +63,62 @@ router.put('/me', (req, res) => {
   if (row.name === null) delete row.name;
   const cols = Object.keys(row);
   if (cols.length) {
-    db.prepare(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`).run(...cols.map((c) => row[c]), req.user.id);
+    await db.run(`UPDATE users SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => row[c]), req.user.id);
   }
-  res.json(publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id)));
-});
+  res.json(publicUser(await db.get('SELECT * FROM users WHERE id = ?', req.user.id)));
+}));
 
-router.post('/me/password', (req, res) => {
+router.post('/me/password', ah(async (req, res) => {
   const { current, next } = req.body || {};
   if (!bcrypt.compareSync(String(current || ''), req.user.password_hash)) {
     return res.status(400).json({ error: 'Current password is wrong' });
   }
   if (!next || String(next).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(String(next), 10), req.user.id);
+  await db.run('UPDATE users SET password_hash = ? WHERE id = ?', bcrypt.hashSync(String(next), 10), req.user.id);
   res.json({ ok: true });
-});
+}));
 
 /** Lightweight list of people, used by the admin's "viewing" switcher. */
-router.get('/users', requireAdmin, (req, res) => {
-  const rows = db.prepare('SELECT * FROM users ORDER BY role DESC, name').all();
-  const stats = db.prepare(
-    `SELECT (SELECT COUNT(*) FROM expenses WHERE user_id = ?) AS expenses,
-            (SELECT MAX(date) FROM expenses WHERE user_id = ?) AS last_expense`
+router.get('/users', requireAdmin, ah(async (req, res) => {
+  const rows = await db.all(
+    `SELECT u.*, (SELECT COUNT(*) FROM expenses e WHERE e.user_id = u.id) AS expenses,
+            (SELECT MAX(date) FROM expenses e WHERE e.user_id = u.id) AS last_expense
+     FROM users u ORDER BY u.role DESC, u.name`
   );
-  res.json(rows.map((u) => ({ ...publicUser(u), created_at: u.created_at, ...stats.get(u.id, u.id) })));
-});
+  res.json(rows.map((u) => ({ ...publicUser(u), created_at: u.created_at, expenses: u.expenses, last_expense: u.last_expense })));
+}));
 
-router.post('/users', requireAdmin, (req, res) => {
+router.post('/users', requireAdmin, ah(async (req, res) => {
   const { username, name, password, role } = req.body || {};
   if (!username || !name || !password) return res.status(400).json({ error: 'Username, name and password are required' });
   if (String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   if (!/^[a-z0-9_.-]{2,30}$/i.test(username)) return res.status(400).json({ error: 'Username may only contain letters, numbers, . _ -' });
-  try {
-    const info = db
-      .prepare('INSERT INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)')
-      .run(username, name, bcrypt.hashSync(String(password), 10), role === 'admin' ? 'admin' : 'user');
-    res.status(201).json(publicUser(db.prepare('SELECT * FROM users WHERE id = ?').get(info.lastInsertRowid)));
-  } catch {
-    res.status(409).json({ error: 'That username is taken' });
-  }
-});
+  if (await db.get('SELECT 1 FROM users WHERE username = ?', username)) return res.status(409).json({ error: 'That username is taken' });
+  const info = await db.run(
+    'INSERT INTO users (username, name, password_hash, role) VALUES (?, ?, ?, ?)',
+    username, name, bcrypt.hashSync(String(password), 10), role === 'admin' ? 'admin' : 'user'
+  );
+  res.status(201).json(publicUser(await db.get('SELECT * FROM users WHERE id = ?', info.lastInsertRowid)));
+}));
 
-router.post('/users/:id/password', requireAdmin, (req, res) => {
+router.post('/users/:id/password', requireAdmin, ah(async (req, res) => {
   const pw = String(req.body?.password || '');
   if (pw.length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  const info = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(bcrypt.hashSync(pw, 10), req.params.id);
+  const info = await db.run('UPDATE users SET password_hash = ? WHERE id = ?', bcrypt.hashSync(pw, 10), req.params.id);
   if (!info.changes) return res.status(404).json({ error: 'Not found' });
   res.json({ ok: true });
-});
+}));
 
-router.delete('/users/:id', requireAdmin, (req, res) => {
+const USER_TABLES = ['card_payments', 'expenses', 'income', 'investments', 'sips', 'holdings', 'cards', 'push_subscriptions', 'ai_reports'];
+
+router.delete('/users/:id', requireAdmin, ah(async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });
-  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  // Explicit cleanup, since hosted libSQL may not enforce ON DELETE CASCADE.
+  await client.batch(
+    [...USER_TABLES.map((t) => ({ sql: `DELETE FROM ${t} WHERE user_id = ?`, args: [req.params.id] })), { sql: 'DELETE FROM users WHERE id = ?', args: [req.params.id] }],
+    'write'
+  );
   res.json({ ok: true });
-});
+}));
 
 export default router;

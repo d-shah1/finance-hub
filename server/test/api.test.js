@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 
 process.env.DB_PATH = ':memory:';
 process.env.JWT_SECRET = 'test-secret';
+process.env.CRON_SECRET = 'cron-test';
 
-const { seedUsers, db } = await import('../db.js');
-const { createApp } = await import('../index.js');
+const { init, db } = await import('../db.js');
+const { createApp } = await import('../app.js');
 const { cardCycle } = await import('../lib/cards.js');
 const { tick } = await import('../lib/scheduler.js');
 
@@ -13,7 +14,7 @@ let server;
 let base;
 
 before(async () => {
-  seedUsers();
+  await init();
   server = createApp().listen(0);
   await new Promise((r) => server.once('listening', r));
   base = `http://127.0.0.1:${server.address().port}/api`;
@@ -143,7 +144,7 @@ test('daily reminder is only queued once per day', async () => {
   const at = new Date('2026-10-19T16:15:00Z');
   await tick(at);
   await tick(at);
-  const rows = db.prepare("SELECT key FROM sent_notifications WHERE key LIKE 'daily:%:2026-10-19'").all();
+  const rows = await db.all("SELECT key FROM sent_notifications WHERE key LIKE 'daily:%:2026-10-19'");
   assert.equal(rows.length, 3);
 });
 
@@ -155,4 +156,29 @@ test('settings and password change', async () => {
   assert.equal((await bhakti('/me/password', { method: 'POST', body: { current: 'wrong', next: 'newpass1' } })).status, 400);
   assert.equal((await bhakti('/me/password', { method: 'POST', body: { current: 'bhakti123', next: 'newpass1' } })).status, 200);
   await login('bhakti', 'newpass1');
+});
+
+test('cron endpoint requires the secret', async () => {
+  assert.equal((await fetch(`${base}/cron`)).status, 401);
+  assert.equal((await fetch(`${base}/cron?key=wrong`)).status, 401);
+  assert.equal((await fetch(`${base}/cron`, { headers: { authorization: 'Bearer cron-test' } })).status, 200);
+  assert.equal((await fetch(`${base}/cron?key=cron-test`)).status, 200);
+});
+
+test('deleting a card or a person cleans up their rows', async () => {
+  const admin = await login('admin', 'admin123');
+  const made = await admin('/users', { method: 'POST', body: { username: 'temp', name: 'Temp', password: 'temp1234' } });
+  assert.equal(made.status, 201);
+  const temp = await login('temp', 'temp1234');
+  const card = await temp('/cards', { method: 'POST', body: { name: 'Temp card', statement_day: 1, due_day: 20 } });
+  const exp = await temp('/expenses', { method: 'POST', body: { date: '2026-10-10', amount: 99, category: 'Other', payment_mode: 'Card', card_id: card.body.id } });
+  await temp('/card-payments', { method: 'POST', body: { card_id: card.body.id, due_date: '2026-10-20', amount: 99, paid_on: '2026-10-19' } });
+
+  assert.equal((await temp(`/cards/${card.body.id}`, { method: 'DELETE' })).status, 200);
+  const after = await db.get('SELECT card_id FROM expenses WHERE id = ?', exp.body.id);
+  assert.equal(after.card_id, null, 'expense survives with card cleared');
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM card_payments WHERE card_id = ?', card.body.id)).n, 0);
+
+  assert.equal((await admin(`/users/${made.body.id}`, { method: 'DELETE' })).status, 200);
+  assert.equal((await db.get('SELECT COUNT(*) AS n FROM expenses WHERE user_id = ?', made.body.id)).n, 0);
 });
