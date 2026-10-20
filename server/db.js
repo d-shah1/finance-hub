@@ -143,6 +143,9 @@ CREATE TABLE IF NOT EXISTS holdings (
   sector TEXT,
   notes TEXT,
   price_updated_at TEXT,
+  source TEXT NOT NULL DEFAULT 'manual',
+  isin TEXT,
+  synced_at TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -182,12 +185,27 @@ let ready;
 export function init() {
   ready ??= (async () => {
     await client.executeMultiple(SCHEMA);
+    await migrate();
     return seedUsers();
   })().catch((e) => {
     ready = undefined;
     throw e;
   });
   return ready;
+}
+
+// Columns added after the first release; CREATE TABLE IF NOT EXISTS does not add them to older databases.
+const ADDED_COLUMNS = {
+  holdings: ["source TEXT NOT NULL DEFAULT 'manual'", 'isin TEXT', 'synced_at TEXT'],
+};
+
+async function migrate() {
+  for (const [table, cols] of Object.entries(ADDED_COLUMNS)) {
+    const have = new Set((await db.all(`PRAGMA table_info(${table})`)).map((c) => c.name));
+    for (const def of cols) {
+      if (!have.has(def.split(' ')[0])) await client.execute(`ALTER TABLE ${table} ADD COLUMN ${def}`);
+    }
+  }
 }
 
 export async function getSetting(key) {

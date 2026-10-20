@@ -1,6 +1,8 @@
 import { db } from '../db.js';
 import { crudRouter } from '../lib/crud.js';
 import { ah, scopeUserId } from '../lib/auth.js';
+import { refreshPrices } from '../lib/prices.js';
+import { growwStatus, syncGroww } from '../lib/groww.js';
 
 const router = crudRouter({
   table: 'holdings',
@@ -18,24 +20,6 @@ const router = crudRouter({
   },
 });
 
-function yahooSymbol(h) {
-  const s = h.symbol.toUpperCase().trim();
-  if (s.includes('.')) return s;
-  if (h.exchange === 'NSE') return `${s}.NS`;
-  if (h.exchange === 'BSE') return `${s}.BO`;
-  return s;
-}
-
-async function fetchPrice(symbol) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d`;
-  const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 FinanceHub' }, signal: AbortSignal.timeout(8000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const json = await res.json();
-  const price = json?.chart?.result?.[0]?.meta?.regularMarketPrice;
-  if (typeof price !== 'number') throw new Error('No price in response');
-  return price;
-}
-
 /**
  * Best-effort refresh of current prices from Yahoo Finance's free public chart endpoint.
  * Holdings that fail keep their manually entered price.
@@ -43,18 +27,37 @@ async function fetchPrice(symbol) {
 router.post('/refresh-prices', ah(async (req, res) => {
   const uid = scopeUserId(req);
   const holdings = await db.all(`SELECT * FROM holdings ${uid !== null ? 'WHERE user_id = ?' : ''}`, ...(uid !== null ? [uid] : []));
-  const results = await Promise.all(
-    holdings.map(async (h) => {
-      try {
-        const price = await fetchPrice(yahooSymbol(h));
-        await db.run("UPDATE holdings SET current_price = ?, price_updated_at = datetime('now') WHERE id = ?", price, h.id);
-        return { id: h.id, symbol: h.symbol, price, ok: true };
-      } catch (e) {
-        return { id: h.id, symbol: h.symbol, ok: false, error: e.message };
-      }
-    })
-  );
+  const results = await refreshPrices(holdings);
   res.json({ updated: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok), results });
+}));
+
+/** The person whose Groww account a request is about: yourself, or the person an admin is viewing. */
+async function growwTarget(req, res) {
+  const uid = scopeUserId(req);
+  if (uid === null) {
+    res.status(400).json({ error: 'Pick a person in the Viewing menu first.' });
+    return null;
+  }
+  const user = uid === req.user.id ? req.user : await db.get('SELECT * FROM users WHERE id = ?', uid);
+  if (!user) res.status(404).json({ error: 'Not found' });
+  return user;
+}
+
+router.get('/groww', ah(async (req, res) => {
+  if (scopeUserId(req) === null) return res.json({ configured: false, everyone: true });
+  const user = await growwTarget(req, res);
+  if (user) res.json(await growwStatus(user));
+}));
+
+router.post('/groww/sync', ah(async (req, res) => {
+  const user = await growwTarget(req, res);
+  if (!user) return;
+  try {
+    const status = await syncGroww(user);
+    res.status(status.ok ? 200 : 502).json(status);
+  } catch (e) {
+    res.status(400).json({ error: e.message });
+  }
 }));
 
 export default router;

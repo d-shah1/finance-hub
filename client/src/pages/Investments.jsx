@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Badge, Empty, Loading, PageHeader, Section, StatCard, toast } from '@/components/common';
+import { Badge, Empty, Loading, Modal, PageHeader, Section, StatCard, toast } from '@/components/common';
 import { Donut, foldOther } from '@/components/charts';
 import EntityForm from '@/components/EntityForm';
 
@@ -166,6 +166,85 @@ function Log({ meta, viewingAll }) {
   );
 }
 
+function timeAgo(iso) {
+  const mins = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} h ago`;
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+/** Groww connection status and "Sync now" for the person being viewed. */
+function GrowwBar() {
+  const { refresh } = useApp();
+  const { data, reload } = useApi('/holdings/groww');
+  const [syncing, setSyncing] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  if (!data || data.everyone) return null;
+
+  async function sync() {
+    setSyncing(true);
+    try {
+      const r = await api('/holdings/groww/sync', { method: 'POST' });
+      toast(`Synced ${r.count} stock${r.count === 1 ? '' : 's'} from Groww`);
+      refresh();
+    } catch (e) {
+      toast(e.message, 'critical');
+    } finally {
+      setSyncing(false);
+      reload();
+    }
+  }
+
+  const last = data.last;
+  const prefix = data.envPrefix;
+  return (
+    <div className="flex flex-wrap items-center gap-3 border-t bg-muted/40 px-4 py-2.5 text-sm sm:px-5">
+      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500 text-[11px] font-bold text-white" aria-hidden>
+        G
+      </span>
+      {data.configured ? (
+        <span className="flex-1 text-muted-foreground">
+          {!last ? (
+            'Groww connected. Stocks sync every morning.'
+          ) : last.ok ? (
+            <>
+              Synced from Groww <span className="text-foreground">{timeAgo(last.at)}</span> · {last.count} stocks · updates every morning
+            </>
+          ) : (
+            <span className="text-destructive">Last Groww sync failed ({timeAgo(last.at)}): {last.error}</span>
+          )}
+        </span>
+      ) : (
+        <span className="flex-1 text-muted-foreground">Connect Groww to fill this list automatically every morning.</span>
+      )}
+      {data.configured ? (
+        <Button variant="outline" size="sm" onClick={sync} disabled={syncing}>
+          <RefreshCw className={syncing ? 'animate-spin' : ''} /> {syncing ? 'Syncing…' : 'Sync now'}
+        </Button>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setHelpOpen(true)}>
+          How to connect
+        </Button>
+      )}
+      <Modal open={helpOpen} onClose={() => setHelpOpen(false)} title="Connect Groww" description="Stocks only. The app reads holdings and never places orders.">
+        <ol className="list-decimal space-y-2 pl-5 text-sm">
+          <li>In Groww, open Profile → Settings → Trading APIs and create a key with the TOTP option. (Groww's free trial plan includes holdings.)</li>
+          <li>
+            In Vercel → Project → Settings → Environment Variables, add <code className="rounded bg-muted px-1">{prefix}_TOTP_TOKEN</code> (the long token) and{' '}
+            <code className="rounded bg-muted px-1">{prefix}_TOTP_SECRET</code> (the secret).
+          </li>
+          <li>Redeploy. The list then syncs every morning, or tap Sync now.</li>
+        </ol>
+        <p className="mt-4 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-900/30 dark:text-amber-200">
+          These keys can trade on your account. Only ever paste them into Vercel, never into chats, emails or this app.
+        </p>
+      </Modal>
+    </div>
+  );
+}
+
 function Holdings({ viewingAll }) {
   const { refresh } = useApp();
   const { data, loading } = useApi('/holdings');
@@ -229,10 +308,11 @@ function Holdings({ viewingAll }) {
           )}
         </div>
       </div>
+      <GrowwBar />
       {loading && !data ? (
         <Loading />
       ) : !rows.length ? (
-        <Empty icon={LineChart} title="No stocks yet" text="Add the shares you hold to track their value and profit or loss." />
+        <Empty icon={LineChart} title="No stocks yet" text="Add the shares you hold, or connect Groww to bring them in automatically." />
       ) : (
         <Table className="min-w-[640px]">
           <TableHeader>
@@ -249,7 +329,14 @@ function Holdings({ viewingAll }) {
             {rows.map((h) => (
               <TableRow key={h.id} className="cursor-pointer" onClick={() => setEditing(h)}>
                 <TableCell className="py-3 pl-4 sm:pl-5">
-                  <div className="font-semibold">{h.symbol}</div>
+                  <div className="flex items-center gap-1.5 font-semibold">
+                    {h.symbol}
+                    {h.source === 'groww' && (
+                      <Badge tone="good" className="px-1.5 py-0 text-[10px]">
+                        Groww
+                      </Badge>
+                    )}
+                  </div>
                   <div className="text-xs text-muted-foreground">
                     {h.name || h.exchange}
                     {viewingAll ? ` · ${h.user_name}` : ''}

@@ -4,7 +4,7 @@ A personal finance tracker for **Darsh**, **Bhakti** and an **admin** who can se
 
 - **Expenses**: amount, date, category, payment mode (**UPI / Card / Cash**), which card or UPI app, merchant, description, need vs want, tags and notes. Search, filters and CSV export.
 - **Earnings**: salary, freelance, bonus and more.
-- **Investments**: monthly plans (SIPs, RDs, PPF…) with one-tap "log this month", a log of one-off investments, and **stock holdings** with P&L (prices refresh from Yahoo Finance's free endpoint, or enter them by hand).
+- **Investments**: monthly plans (SIPs, RDs, PPF…) with one-tap "log this month", a log of one-off investments, and **stock holdings** with P&L. Holdings can sync automatically from **Groww** every morning, or be entered by hand (prices refresh from Yahoo Finance's free endpoint).
 - **Credit cards**: statement day and due day per card. The app works out each bill, its due date, unbilled spend and limit used, and lets you mark bills paid.
 - **Reminders**: a push notification every evening to log the day's transactions, plus one in the morning the **day before** each credit card bill is due and each SIP is debited (skipped if the bill is already paid or the SIP already logged). If nothing has been logged today, an in-app banner shows as well.
 - **AI advisor (free)**: tells you how much to invest this month, how to split it, and where to cut spending. Uses a free AI tier (Groq or Google Gemini) or a local model (Ollama). With no key at all, a built-in rule-based advisor (50/30/20 budget, savings rate, emergency fund, card usage, stock concentration) still works.
@@ -91,6 +91,24 @@ Nothing to set up: `vercel.json` registers two daily jobs (the free plan allows 
 | `/api/cron/morning` | about 9 AM | Credit card bills and SIPs due **tomorrow** (skipped if already paid or logged) |
 
 Each person just opens **Settings → Turn on** notifications on their phone. Vercel may run a job some minutes after the hour it is scheduled for, so expect them roughly between 8:30 and 9:30. On Vercel the evening time is the same for everyone. The per-person reminder time in Settings applies when you self-host (below).
+
+### 4. Optional: sync stocks from Groww
+Each person's Groww **stock** holdings (not mutual funds) can sync into Investments → Stock holdings every morning.
+
+1. In Groww, open Settings → **Trading APIs** and create an API key with the **TOTP** option. Groww's free trial API plan includes holdings.
+2. In Vercel, add two environment variables per person (use their app username in capitals):
+
+| Name | Value |
+|------|-------|
+| `GROWW_DARSH_TOTP_TOKEN` | the long TOTP token Groww shows |
+| `GROWW_DARSH_TOTP_SECRET` | the TOTP secret |
+| `GROWW_BHAKTI_TOTP_TOKEN` / `GROWW_BHAKTI_TOTP_SECRET` | the same for Bhakti |
+
+3. Redeploy. The morning job syncs everyone who is connected, and **Sync now** on the Stock holdings tab syncs on demand.
+
+Synced stocks show a **Groww** badge. They are updated each morning and removed once sold, so edit them in Groww rather than in the app. Stocks you add by hand are never changed (a hand-added NSE/BSE stock that also appears in Groww is taken over instead of duplicated). Current prices still come from Yahoo Finance, because Groww's live prices need its paid plan.
+
+**Security:** these keys can place trades on the account. The app only calls Groww's read-only holdings endpoint and keeps the keys in Vercel's environment variables only (never in the database, the app's screens or logs), but anyone who obtains them could trade. Never share them, and delete the key in Groww if you stop using this.
 
 Changed a variable later? Redeploy from the Vercel dashboard (Deployments → ⋯ → Redeploy) so it takes effect.
 

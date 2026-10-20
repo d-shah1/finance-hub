@@ -3,6 +3,7 @@ import { db } from '../db.js';
 import { sendToUser } from './push.js';
 import { addDays, clampedDate, monthRange, nowParts } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
+import { syncAllGroww } from './groww.js';
 
 const MORNING = '09:00';
 
@@ -71,10 +72,10 @@ async function dayBeforeReminders(u, now) {
  *
  * - job 'evening': the "log today's transactions" reminder to everyone, now. Vercel runs this once
  *   each evening.
- * - job 'morning': card bill and SIP reminders for anything due tomorrow, now. Vercel runs this once
- *   each morning.
+ * - job 'morning': card bill and SIP reminders for anything due tomorrow, and the daily Groww
+ *   holdings sync, now. Vercel runs this once each morning.
  * - no job (the built-in every-minute scheduler on a long-running server): each person's evening
- *   reminder at their chosen time, and the day-before reminders from 9 AM.
+ *   reminder at their chosen time, and the morning work from 9 AM.
  */
 export async function tick(date = new Date(), { job } = {}) {
   const now = nowParts(date);
@@ -83,6 +84,9 @@ export async function tick(date = new Date(), { job } = {}) {
   for (const u of users) {
     if (job === 'evening' || (!job && now.time >= u.reminder_time)) jobs.push(dailyLogReminder(u, now));
     if (job === 'morning' || (!job && now.time >= MORNING)) jobs.push(dayBeforeReminders(u, now));
+  }
+  if (job === 'morning' || (!job && now.time >= MORNING)) {
+    jobs.push(once(`groww:${now.date}`, () => syncAllGroww()));
   }
   await Promise.allSettled(jobs);
   // Keep the dedupe table small.
