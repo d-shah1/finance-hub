@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import { useApp } from '@/context';
 import { cn } from '@/lib/utils';
@@ -13,6 +13,8 @@ import { ConfirmDelete, ErrorText, Field, Modal, Segmented, toast } from './comm
  * Modal create/edit form driven by a field list.
  * Field: { name, label, type: text|number|date|select|segmented|toggle|color|custom, options, required, hint, span, placeholder }
  * A custom field supplies render({ form, set }).
+ * Optional per field: section (heading shown when it changes), when(form) (show only if true),
+ * more (tucked behind "More details"), keys (form keys a custom field writes).
  * `extra(form)` may render a live note under the fields (e.g. what saving will do).
  */
 export default function EntityForm({ open, onClose, endpoint, title, fields, initial, record, onSaved, noun = 'Entry', extra }) {
@@ -20,10 +22,12 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
   const [form, setForm] = useState({});
   const [error, setError] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [showMore, setShowMore] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setError(null);
+    setShowMore(false);
     setForm(record ? { ...record } : { ...(typeof initial === 'function' ? initial() : initial) });
     // `initial` is often an inline function; only reset when the modal opens or the record changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -58,6 +62,102 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
 
   const blocked = viewingAll && !record;
 
+  // `when(form)` hides a field that doesn't apply; `more` fields wait behind "More details"
+  // unless they already have a value.
+  const applies = fields.filter((f) => !f.when || f.when(form));
+  const hasValue = (f) => (f.keys || [f.name]).some((k) => form[k] !== undefined && form[k] !== null && form[k] !== '');
+  const visible = applies.filter((f) => !f.more || showMore || hasValue(f));
+  const hiddenMore = applies.filter((f) => !visible.includes(f));
+
+  // One field's input, by type.
+  const renderField = (f) => {
+      const v = form[f.name] ?? '';
+      const span = f.span === 2 ? 'sm:col-span-2' : '';
+      const id = `ef-${f.name}`;
+      if (f.type === 'custom') {
+        return (
+          <Field key={f.name} label={f.label} hint={f.hint} className={span || 'sm:col-span-2'}>
+            {f.render({ form, set })}
+          </Field>
+        );
+      }
+      if (f.type === 'segmented') {
+        return (
+          <Field key={f.name} label={f.label} className={span || 'sm:col-span-2'}>
+            <Segmented size="sm" options={f.options} value={v} onChange={(x) => set(f.name, x)} />
+          </Field>
+        );
+      }
+      if (f.type === 'toggle') {
+        return (
+          <div key={f.name} className={cn('flex items-center gap-3 self-end pb-1.5', span)}>
+            <Switch id={id} checked={!!Number(v)} onCheckedChange={(c) => set(f.name, c ? 1 : 0)} />
+            <Label htmlFor={id}>{f.label}</Label>
+          </div>
+        );
+      }
+      if (f.type === 'select') {
+        const opts = f.options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+        // Radix Select has no empty value, so optional fields get an explicit "None" choice.
+        const NONE = '__none';
+        return (
+          <Field key={f.name} label={f.label} hint={f.hint} className={span}>
+            <Select
+              value={v === '' || v === null ? (f.required ? undefined : NONE) : String(v)}
+              onValueChange={(x) => set(f.name, x === NONE ? null : x)}
+            >
+              <SelectTrigger id={id}>
+                <SelectValue placeholder="Select…" />
+              </SelectTrigger>
+              <SelectContent>
+                {!f.required && <SelectItem value={NONE}>{f.noneLabel || 'None'}</SelectItem>}
+                {opts.map((o) => (
+                  <SelectItem key={o.value} value={String(o.value)}>
+                    {o.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        );
+      }
+      if (f.type === 'color') {
+        return (
+          <Field key={f.name} label={f.label} className={span}>
+            <div className="flex flex-wrap gap-2">
+              {f.options.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => set(f.name, c)}
+                  className={cn('h-8 w-8 rounded-full ring-offset-2 ring-offset-background transition', v === c && 'ring-2 ring-foreground')}
+                  style={{ background: c }}
+                  aria-label={`Colour ${c}`}
+                  aria-pressed={v === c}
+                />
+              ))}
+            </div>
+          </Field>
+        );
+      }
+      return (
+        <Field key={f.name} label={f.label} hint={f.hint} className={span} htmlFor={id}>
+          <Input
+            id={id}
+            type={f.type || 'text'}
+            required={f.required}
+            step={f.type === 'number' ? f.step || 'any' : undefined}
+            min={f.min}
+            max={f.max}
+            inputMode={f.type === 'number' ? 'decimal' : undefined}
+            placeholder={f.placeholder}
+            value={v}
+            onChange={(e) => set(f.name, e.target.value)}
+          />
+        </Field>
+      );
+  };
+
   return (
     <Modal
       open={open}
@@ -76,99 +176,25 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
         </>
       }
     >
-      <form id="entity-form" onSubmit={save} className="grid gap-4 sm:grid-cols-2">
+      <form id="entity-form" onSubmit={save} className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {blocked && (
           <p className="rounded-md bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-300 sm:col-span-2">
             You are viewing everyone. Pick a person in the top bar to add this for them.
           </p>
         )}
-        {fields.map((f) => {
-          const v = form[f.name] ?? '';
-          const span = f.span === 2 ? 'sm:col-span-2' : '';
-          const id = `ef-${f.name}`;
-          if (f.type === 'custom') {
-            return (
-              <Field key={f.name} label={f.label} hint={f.hint} className={span || 'sm:col-span-2'}>
-                {f.render({ form, set })}
-              </Field>
-            );
-          }
-          if (f.type === 'segmented') {
-            return (
-              <Field key={f.name} label={f.label} className={span || 'sm:col-span-2'}>
-                <Segmented size="sm" options={f.options} value={v} onChange={(x) => set(f.name, x)} />
-              </Field>
-            );
-          }
-          if (f.type === 'toggle') {
-            return (
-              <div key={f.name} className={cn('flex items-center gap-3 self-end pb-1.5', span)}>
-                <Switch id={id} checked={!!Number(v)} onCheckedChange={(c) => set(f.name, c ? 1 : 0)} />
-                <Label htmlFor={id}>{f.label}</Label>
-              </div>
-            );
-          }
-          if (f.type === 'select') {
-            const opts = f.options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
-            // Radix Select has no empty value, so optional fields get an explicit "None" choice.
-            const NONE = '__none';
-            return (
-              <Field key={f.name} label={f.label} hint={f.hint} className={span}>
-                <Select
-                  value={v === '' || v === null ? (f.required ? undefined : NONE) : String(v)}
-                  onValueChange={(x) => set(f.name, x === NONE ? null : x)}
-                >
-                  <SelectTrigger id={id}>
-                    <SelectValue placeholder="Select…" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {!f.required && <SelectItem value={NONE}>{f.noneLabel || 'None'}</SelectItem>}
-                    {opts.map((o) => (
-                      <SelectItem key={o.value} value={String(o.value)}>
-                        {o.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </Field>
-            );
-          }
-          if (f.type === 'color') {
-            return (
-              <Field key={f.name} label={f.label} className={span}>
-                <div className="flex flex-wrap gap-2">
-                  {f.options.map((c) => (
-                    <button
-                      type="button"
-                      key={c}
-                      onClick={() => set(f.name, c)}
-                      className={cn('h-8 w-8 rounded-full ring-offset-2 ring-offset-background transition', v === c && 'ring-2 ring-foreground')}
-                      style={{ background: c }}
-                      aria-label={`Colour ${c}`}
-                      aria-pressed={v === c}
-                    />
-                  ))}
-                </div>
-              </Field>
-            );
-          }
-          return (
-            <Field key={f.name} label={f.label} hint={f.hint} className={span} htmlFor={id}>
-              <Input
-                id={id}
-                type={f.type || 'text'}
-                required={f.required}
-                step={f.type === 'number' ? f.step || 'any' : undefined}
-                min={f.min}
-                max={f.max}
-                inputMode={f.type === 'number' ? 'decimal' : undefined}
-                placeholder={f.placeholder}
-                value={v}
-                onChange={(e) => set(f.name, e.target.value)}
-              />
-            </Field>
-          );
-        })}
+        {visible.map((f, i) => (
+          <Fragment key={f.name}>
+            {f.section && f.section !== visible[i - 1]?.section && (
+              <h3 className={cn('text-xs font-semibold uppercase tracking-wide text-muted-foreground sm:col-span-2', i > 0 && 'mt-2 border-t pt-4')}>{f.section}</h3>
+            )}
+            {renderField(f)}
+          </Fragment>
+        ))}
+        {hiddenMore.length > 0 && (
+          <Button type="button" variant="link" className="h-auto justify-start p-0 sm:col-span-2" onClick={() => setShowMore(true)}>
+            + More details ({hiddenMore.map((f) => f.label.toLowerCase()).join(', ')})
+          </Button>
+        )}
         {extra && <div className="sm:col-span-2">{extra(form)}</div>}
         <div className="sm:col-span-2">
           <ErrorText error={error} />

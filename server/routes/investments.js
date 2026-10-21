@@ -20,6 +20,7 @@ const investmentsCrud = crudRouter({
   table: 'investments',
   dateColumn: 'date',
   orderBy: 't.date DESC, t.id DESC',
+  filters: (req) => (req.query.sip_id ? { clauses: ['t.sip_id = ?'], params: [Number(req.query.sip_id)] } : { clauses: [], params: [] }),
   fields: {
     date: { type: 'date', required: true, label: 'Date' },
     name: { type: 'string', required: true, maxLength: 120, label: 'Name' },

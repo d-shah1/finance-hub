@@ -1,6 +1,6 @@
 // App-level building blocks composed from shadcn/ui primitives.
 import { useEffect, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
 import { toast as sonner } from 'sonner';
 import { cn } from '@/lib/utils';
 import { currentMonth, monthLabel, shiftMonth } from '@/lib/format';
@@ -10,7 +10,8 @@ import { Label } from '@/components/ui/label';
 import { Badge as UIBadge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function PageHeader({ title, subtitle, actions }) {
   return (
@@ -39,25 +40,39 @@ export function MonthPicker({ value, onChange }) {
   );
 }
 
-/** Dialog with a scrolling body and a sticky footer. */
+/**
+ * Drawer with a header, scrolling body and sticky footer. Opens from the bottom on phones and
+ * slides in from the right on larger screens. (Called Modal for history; every form uses it.)
+ */
 export function Modal({ open, onClose, title, description, children, footer, wide }) {
+  const desktop = useMediaQuery('(min-width: 640px)');
+  const direction = desktop ? 'right' : 'bottom';
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className={cn('flex flex-col gap-0 bg-card p-0', wide ? 'sm:max-w-2xl' : 'sm:max-w-lg')}>
-        <DialogHeader className="border-b px-6 py-4">
-          <DialogTitle>{title}</DialogTitle>
-          <DialogDescription className={description ? '' : 'sr-only'}>{description || title}</DialogDescription>
-        </DialogHeader>
-        {children && <div className="overflow-y-auto px-6 py-5">{children}</div>}
-        {footer && <DialogFooter className="pb-safe gap-2 border-t px-6 py-3 sm:items-center">{footer}</DialogFooter>}
-      </DialogContent>
-    </Dialog>
+    <Drawer open={open} onOpenChange={(o) => !o && onClose()} direction={direction} handleOnly={!desktop} repositionInputs={false}>
+      <DrawerContent direction={direction} className={cn(desktop && wide && 'max-w-[560px]')}>
+        <DrawerHeader className="flex flex-row items-start gap-3 border-b px-5 py-4">
+          <div className="min-w-0 flex-1 space-y-1">
+            <DrawerTitle>{title}</DrawerTitle>
+            <DrawerDescription className={description ? '' : 'sr-only'}>{description || title}</DrawerDescription>
+          </div>
+          <DrawerClose asChild>
+            <Button variant="ghost" size="icon" className="-mr-2 -mt-1 h-8 w-8 shrink-0 text-muted-foreground" aria-label="Close">
+              <X />
+            </Button>
+          </DrawerClose>
+        </DrawerHeader>
+        {children && <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>}
+        {footer && <div className="pb-safe flex flex-col-reverse gap-2 border-t px-5 py-3 sm:flex-row sm:items-center sm:justify-end">{footer}</div>}
+      </DrawerContent>
+    </Drawer>
   );
 }
 
 export function Field({ label, children, hint, className = '', htmlFor }) {
   return (
-    <div className={cn('grid gap-2', className)}>
+    // min-w-0 lets long content (e.g. a fund name) truncate instead of overflowing the form;
+    // content-start keeps label and input together when a neighbour has a hint line.
+    <div className={cn('grid min-w-0 grid-cols-[minmax(0,1fr)] content-start gap-2', className)}>
       {label && <Label htmlFor={htmlFor}>{label}</Label>}
       {children}
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -111,7 +126,7 @@ export function Segmented({ options, value, onChange, size = 'default', classNam
   );
   if (!scroll) return group;
   return (
-    <div ref={rowRef} className={cn('no-scrollbar -mx-6 overflow-x-auto scroll-px-6 px-6 pb-1', className)}>
+    <div ref={rowRef} data-vaul-no-drag className={cn('no-scrollbar -mx-5 overflow-x-auto scroll-px-5 px-5 pb-1', className)}>
       {group}
     </div>
   );
