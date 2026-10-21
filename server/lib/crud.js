@@ -56,10 +56,11 @@ export function parseBody(body, fields, { partial = false } = {}) {
  *
  * options.filters(req) returns extra { clauses: [], params: [] } for listing.
  * options.beforeSave(row, req, existing) may validate or adjust a row before it is written (can be async).
+ * options.afterSave(saved, req, existing) runs once the row is written (can be async).
  * options.onDelete(existing) cleans up rows that reference it. Foreign-key cascades are not relied on
  * because hosted libSQL connections do not always enforce them.
  */
-export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, filters, beforeSave, onDelete }) {
+export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, filters, beforeSave, afterSave, onDelete }) {
   const router = express.Router();
 
   router.get('/', ah(async (req, res) => {
@@ -102,7 +103,9 @@ export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, fil
       `INSERT INTO ${table} (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
       ...cols.map((c) => row[c])
     );
-    res.status(201).json(await db.get(`SELECT * FROM ${table} WHERE id = ?`, info.lastInsertRowid));
+    const saved = await db.get(`SELECT * FROM ${table} WHERE id = ?`, info.lastInsertRowid);
+    await afterSave?.(saved, req, null);
+    res.status(201).json(saved);
   }));
 
   router.put('/:id', ah(async (req, res) => {
@@ -114,7 +117,9 @@ export function crudRouter({ table, fields, orderBy = 'id DESC', dateColumn, fil
     if (cols.length) {
       await db.run(`UPDATE ${table} SET ${cols.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`, ...cols.map((c) => row[c]), existing.id);
     }
-    res.json(await db.get(`SELECT * FROM ${table} WHERE id = ?`, existing.id));
+    const saved = await db.get(`SELECT * FROM ${table} WHERE id = ?`, existing.id);
+    await afterSave?.(saved, req, existing);
+    res.json(saved);
   }));
 
   router.delete('/:id', ah(async (req, res) => {

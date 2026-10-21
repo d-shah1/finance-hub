@@ -2,6 +2,7 @@ import { db } from '../db.js';
 import { monthRange, nowParts, pad, shiftMonth } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
 import { accountsOverview } from './accounts.js';
+import { fillAllPlans } from './sips.js';
 
 const round = (n) => Math.round(n);
 const pct = (a, b) => (b > 0 ? a / b : 0);
@@ -36,6 +37,7 @@ function groupBy(column, uid, from, to) {
 
 /** Collects the numbers the dashboard and the AI advisor work from. uid null = everyone. */
 export async function buildSummary(uid, month) {
+  await fillAllPlans(uid); // SIP instalments that came due count towards every total below
   const now = nowParts();
   const ym = month || `${now.year}-${pad(now.month)}`;
   const { from, to } = monthRange(ym);
@@ -113,8 +115,18 @@ export async function buildSummary(uid, month) {
     daily,
     sips,
     sipMonthly: sips.reduce((s, x) => s + x.amount, 0),
-    totalInvestedAllTime: allTime.t,
-    investByType,
+    // Money put in: SIPs and other investments, plus what the stocks you hold cost.
+    totalInvestedAllTime: allTime.t + portfolioCost,
+    contributions: allTime.t,
+    investByType: (() => {
+      const rows = investByType.map((r) => ({ ...r }));
+      if (portfolioCost > 0) {
+        const stocks = rows.find((r) => r.key === 'Stocks');
+        if (stocks) stocks.total += portfolioCost;
+        else rows.push({ key: 'Stocks', total: portfolioCost });
+      }
+      return rows.sort((a, b) => b.total - a.total);
+    })(),
     portfolio: {
       cost: portfolioCost,
       value: portfolioValue,

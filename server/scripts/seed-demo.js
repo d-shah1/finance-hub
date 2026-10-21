@@ -2,6 +2,7 @@
 // Usage: npm run demo   (uses DB_PATH, so point it at a throwaway file if you want to keep your real data clean)
 import { db, init } from '../db.js';
 import { stampBalance } from '../lib/accounts.js';
+import { fillPlan } from '../lib/sips.js';
 import { addDays, nowParts, pad } from '../lib/dates.js';
 
 await init();
@@ -64,14 +65,16 @@ for (const u of users) {
   );
 
   const sips = u.username === 'darsh'
-    ? [['Nifty 50 Index Fund', 'Mutual Fund', 8000, 5, 'Groww'], ['Parag Parikh Flexi Cap', 'Mutual Fund', 5000, 10, 'Groww'], ['PPF', 'PPF', 3000, 25, 'SBI']]
-    : [['UTI Nifty Next 50', 'Mutual Fund', 6000, 7, 'Kuvera'], ['Gold ETF', 'Gold', 2000, 12, 'Zerodha']];
-  for (const [name, type, amount, day, platform] of sips) {
-    const sid = (await db.run('INSERT INTO sips (user_id, name, type, amount, day_of_month, platform) VALUES (?, ?, ?, ?, ?, ?)', u.id, name, type, amount, day, platform)).lastInsertRowid;
-    for (let k = 3; k >= 0; k--) {
-      const d = new Date(Date.UTC(now.year, now.month - 1 - k, day)).toISOString().slice(0, 10);
-      if (d <= todayIso) await db.run('INSERT INTO investments (user_id, sip_id, date, name, type, amount, platform) VALUES (?, ?, ?, ?, ?, ?, ?)', u.id, sid, d, name, type, amount, platform);
-    }
+    ? [['Nifty 50 Index Fund', 'Mutual Fund', 8000, 5, 'Groww', 3], ['Parag Parikh Flexi Cap', 'Mutual Fund', 5000, 10, 'Groww', 2], ['PPF', 'PPF', 3000, 25, 'SBI', 1.5]]
+    : [['UTI Nifty Next 50', 'Mutual Fund', 6000, 7, 'Kuvera', 2.5], ['Gold ETF', 'Gold', 2000, 12, 'Zerodha', 1]];
+  // SIPs running for a few years; their past instalments are filled in automatically.
+  for (const [name, type, amount, day, platform, yearsAgo] of sips) {
+    const start = addDays(todayIso, -Math.round(yearsAgo * 365));
+    const { lastInsertRowid } = await db.run(
+      'INSERT INTO sips (user_id, name, type, amount, day_of_month, platform, start_date) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      u.id, name, type, amount, day, platform, start
+    );
+    await fillPlan(await db.get('SELECT * FROM sips WHERE id = ?', lastInsertRowid), todayIso);
   }
   const stocks = u.username === 'darsh'
     ? [['INFY', 'Infosys', 25, 1420, 1512], ['HDFCBANK', 'HDFC Bank', 30, 1580, 1702], ['TATAMOTORS', 'Tata Motors', 40, 980, 812], ['ITC', 'ITC', 100, 410, 436]]

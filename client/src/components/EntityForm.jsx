@@ -12,8 +12,9 @@ import { ConfirmDelete, ErrorText, Field, Modal, Segmented, toast } from './comm
 /**
  * Modal create/edit form driven by a field list.
  * Field: { name, label, type: text|number|date|select|segmented|toggle|color, options, required, hint, span, placeholder }
+ * `extra(form)` may render a live note under the fields (e.g. what saving will do).
  */
-export default function EntityForm({ open, onClose, endpoint, title, fields, initial, record, onSaved, noun = 'Entry' }) {
+export default function EntityForm({ open, onClose, endpoint, title, fields, initial, record, onSaved, noun = 'Entry', extra }) {
   const { refresh, viewingAll } = useApp();
   const [form, setForm] = useState({});
   const [error, setError] = useState(null);
@@ -160,6 +161,7 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
             </Field>
           );
         })}
+        {extra && <div className="sm:col-span-2">{extra(form)}</div>}
         <div className="sm:col-span-2">
           <ErrorText error={error} />
         </div>

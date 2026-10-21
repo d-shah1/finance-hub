@@ -4,6 +4,7 @@ import { sendToUser } from './push.js';
 import { addDays, clampedDate, monthRange, nowParts } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
 import { syncAllGroww } from './groww.js';
+import { fillAllPlans } from './sips.js';
 
 const MORNING = '09:00';
 
@@ -56,7 +57,7 @@ async function dayBeforeReminders(u, now) {
       once(`sip:${s.id}:${tomorrow}`, () =>
         sendToUser(u.id, {
           title: `SIP tomorrow: ${s.name}`,
-          body: `${fmt(s.amount)} will be debited ${niceDate(tomorrow)}. Keep the balance ready.`,
+          body: `${fmt(s.amount)} will be debited ${niceDate(tomorrow)} and logged for you. Keep the balance ready.`,
           url: '/investments',
           tag: `sip-${s.id}`,
         })
@@ -87,6 +88,8 @@ export async function tick(date = new Date(), { job } = {}) {
   }
   if (job === 'morning' || (!job && now.time >= MORNING)) {
     jobs.push(once(`groww:${now.date}`, () => syncAllGroww()));
+    // Log today's SIP instalments even if nobody opens the app (keeps bank balances right).
+    jobs.push(fillAllPlans(null, now.date));
   }
   await Promise.allSettled(jobs);
   // Keep the dedupe table small.

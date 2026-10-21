@@ -169,6 +169,13 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Months a SIP plan should not fill in (the instalment was deleted: skipped or bounced).
+CREATE TABLE IF NOT EXISTS sip_skips (
+  sip_id INTEGER NOT NULL,
+  month TEXT NOT NULL,
+  PRIMARY KEY (sip_id, month)
+);
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -219,8 +226,9 @@ const ADDED_COLUMNS = {
   holdings: ["source TEXT NOT NULL DEFAULT 'manual'", 'isin TEXT', 'synced_at TEXT'],
   // Which bank account money left (or, for income, arrived in).
   expenses: ['bank_account_id INTEGER'],
-  investments: ['bank_account_id INTEGER'],
-  sips: ['bank_account_id INTEGER'],
+  // auto = 1: instalment written by its SIP plan (lib/sips.js). end_date: the day a plan stopped.
+  investments: ['bank_account_id INTEGER', 'auto INTEGER NOT NULL DEFAULT 0'],
+  sips: ['bank_account_id INTEGER', 'end_date TEXT'],
   income: ['bank_account_id INTEGER'],
 };
 

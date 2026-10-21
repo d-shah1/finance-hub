@@ -11,7 +11,38 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge, Empty, Loading, Modal, PageHeader, Section, StatCard, toast } from '@/components/common';
 import { Donut, foldOther } from '@/components/charts';
 import EntityForm from '@/components/EntityForm';
+import { sipDueDates } from '@/lib/sip';
 import { accountField, useAccountOptions } from '@/hooks/useAccountOptions';
+
+const monthYear = (iso) => niceDate(iso, { month: 'short', year: 'numeric' });
+
+/** Live note in the plan form: what saving will fill in. */
+function PlanPreview({ form, record }) {
+  const dates = sipDueDates(form, todayIso());
+  const amount = Number(form.amount) || 0;
+  if (!form.start_date) return null;
+  if (!dates.length) {
+    return <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">The first instalment will be logged on its debit day.</p>;
+  }
+  return (
+    <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-primary">
+      {record ? 'This plan covers' : 'Saving fills in'} {dates.length} instalment{dates.length === 1 ? '' : 's'} from {monthYear(dates[0])} to {monthYear(dates.at(-1))}
+      {amount ? ` (${inr(dates.length * amount)})` : ''}. Months you already logged or edited are kept; future months are logged on their debit day.
+    </p>
+  );
+}
+
+function PlanStatus({ s }) {
+  if (s.end_date && !s.active) return <Badge>Stopped {niceDate(s.end_date, { day: 'numeric', month: 'short', year: 'numeric' })}</Badge>;
+  if (!s.active) return <Badge>Paused</Badge>;
+  if (s.logged_this_month)
+    return (
+      <Badge tone="good">
+        <CheckCircle2 /> Done this month
+      </Badge>
+    );
+  return <Badge tone="brand">Next: {niceDate(s.due_date)}</Badge>;
+}
 
 function Plans({ meta, viewingAll, accountOptions }) {
   const { refresh } = useApp();
@@ -24,14 +55,17 @@ function Plans({ meta, viewingAll, accountOptions }) {
     { name: 'day_of_month', label: 'Debit day of month', type: 'number', required: true, min: 1, max: 31 },
     { name: 'type', label: 'Type', type: 'segmented', options: meta?.investmentTypes || [] },
     { name: 'platform', label: 'Platform', placeholder: 'Groww, Zerodha, Kuvera, bank…' },
-    { ...accountField(accountOptions), hint: 'Instalments you log are taken from this account.' },
-    { name: 'start_date', label: 'Started on', type: 'date' },
+    { ...accountField(accountOptions), hint: 'Each instalment is taken from this account.' },
+    { name: 'start_date', label: 'Started on', type: 'date', required: true, max: todayIso(), hint: 'Past months are filled in from this date.' },
+    { name: 'end_date', label: 'Stopped on (optional)', type: 'date', max: todayIso(), hint: 'For a SIP you have ended.' },
     { name: 'active', label: 'Active', type: 'toggle' },
     { name: 'notes', label: 'Notes', span: 2 },
   ];
-  const total = (data || []).filter((s) => s.active).reduce((s, x) => s + x.amount, 0);
+  const active = (data || []).filter((s) => s.active);
+  const monthly = active.reduce((t, x) => t + x.amount, 0);
+  const investedViaPlans = (data || []).reduce((t, x) => t + x.invested, 0);
 
-  async function logIt(s) {
+  async function logEarly(s) {
     await api(`/sips/${s.id}/log`, { method: 'POST', body: {} });
     toast(`${s.name} logged for this month`);
     refresh();
@@ -42,7 +76,9 @@ function Plans({ meta, viewingAll, accountOptions }) {
       <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-3 pt-4 sm:px-5">
         <div>
           <h2 className="font-semibold">Monthly plans (SIPs, RDs…)</h2>
-          <p className="text-xs text-muted-foreground">Committed every month: {inr(total)}</p>
+          <p className="text-xs text-muted-foreground">
+            {inr(monthly)} a month across {active.length} active plan{active.length === 1 ? '' : 's'} · {inr(investedViaPlans)} invested through plans so far
+          </p>
         </div>
         {!viewingAll && (
           <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
@@ -53,39 +89,43 @@ function Plans({ meta, viewingAll, accountOptions }) {
       {loading && !data ? (
         <Loading />
       ) : !data?.length ? (
-        <Empty icon={CalendarClock} title="No monthly plans" text="Add SIPs or recurring deposits. You'll be reminded on the debit day and can log each instalment in one tap." />
+        <Empty
+          icon={CalendarClock}
+          title="No monthly plans"
+          text="Add your SIPs or recurring deposits with the date they started. Past instalments are filled in, and new ones are logged automatically on each debit day."
+        />
       ) : (
         <ul className="divide-y border-t">
           {data.map((s) => (
             <li key={s.id} className="flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
-              <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setEditing(s)}>
+              <button className="flex min-w-0 flex-1 items-center gap-3 text-left" onClick={() => setEditing({ ...s, start_date: s.start_date || s.start })}>
                 <span className="flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
                   <span className="text-[10px] leading-none">day</span>
                   <span className="text-sm font-bold leading-none">{s.day_of_month}</span>
                 </span>
                 <div className="min-w-0">
-                  <div className={`truncate font-medium ${s.active ? '' : 'line-through opacity-60'}`}>{s.name}</div>
+                  <div className={`truncate font-medium ${s.active ? '' : 'opacity-60'}`}>{s.name}</div>
                   <div className="text-xs text-muted-foreground">
-                    {s.type}
+                    {inr(s.amount)}/month · since {monthYear(s.start)}
                     {s.platform ? ` · ${s.platform}` : ''}
                     {viewingAll ? ` · ${s.user_name}` : ''}
                   </div>
                 </div>
               </button>
-              <span className="tabular font-semibold">{inr(s.amount)}</span>
-              {s.active ? (
-                s.logged_this_month ? (
-                  <Badge tone="good">
-                    <CheckCircle2 /> Done this month
-                  </Badge>
-                ) : (
-                  <Button size="sm" onClick={() => logIt(s)}>
-                    Log this month
+              <div className="text-right">
+                <div className="tabular font-semibold">{inr(s.invested)}</div>
+                <div className="text-xs text-muted-foreground">
+                  {s.instalments} instalment{s.instalments === 1 ? '' : 's'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <PlanStatus s={s} />
+                {s.active && !s.logged_this_month && !viewingAll ? (
+                  <Button size="sm" variant="ghost" onClick={() => logEarly(s)} title="Already debited? Log it before the debit day.">
+                    Log now
                   </Button>
-                )
-              ) : (
-                <Badge>Paused</Badge>
-              )}
+                ) : null}
+              </div>
             </li>
           ))}
         </ul>
@@ -101,13 +141,14 @@ function Plans({ meta, viewingAll, accountOptions }) {
         noun="Plan"
         fields={fields}
         initial={() => ({ type: 'Mutual Fund', day_of_month: 5, active: 1, start_date: todayIso() })}
+        extra={(form) => <PlanPreview form={form} record={editing} />}
       />
     </Card>
   );
 }
 
 function Log({ meta, viewingAll, accountOptions }) {
-  const { data, loading } = useApi('/investments', { limit: 200 });
+  const { data, loading } = useApi('/investments', { limit: 2000 });
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
   const fields = [
@@ -143,7 +184,7 @@ function Log({ meta, viewingAll, accountOptions }) {
                   <div className="text-xs text-muted-foreground">
                     {niceDate(r.date, { day: 'numeric', month: 'short', year: 'numeric' })} · {r.type}
                     {r.platform ? ` · ${r.platform}` : ''}
-                    {r.sip_id ? ' · SIP' : ''}
+                    {r.sip_id ? (r.auto ? ' · SIP, logged automatically' : ' · SIP') : ''}
                     {viewingAll ? ` · ${r.user_name}` : ''}
                   </div>
                 </div>
@@ -388,15 +429,21 @@ export default function Investments() {
       {data && (
         <div className="mb-6 grid gap-4 lg:grid-cols-3">
           <div className="grid grid-cols-2 gap-3 lg:col-span-2">
-            <StatCard label="Invested this month" value={inr(data.invested)} icon={PiggyBank} tone="violet" />
-            <StatCard label="Monthly SIPs" value={inr(data.sipMonthly)} icon={CalendarClock} sub={`${data.sips.length} active plans`} />
-            <StatCard label="Total invested (all time)" value={inr(data.totalInvestedAllTime)} icon={PiggyBank} tone="good" />
+            <StatCard
+              label="Total invested"
+              value={inr(data.totalInvestedAllTime)}
+              icon={PiggyBank}
+              tone="good"
+              sub={`${inr(data.contributions)} in SIPs & investments · ${inr(data.portfolio.cost)} in stocks`}
+            />
+            <StatCard label="Invested this month" value={inr(data.invested)} icon={PiggyBank} tone="violet" sub={`${monthYear(todayIso())}`} />
+            <StatCard label="Monthly SIPs" value={inr(data.sipMonthly)} icon={CalendarClock} sub={`${data.sips.length} active plan${data.sips.length === 1 ? '' : 's'}`} />
             <StatCard
               label="Stock portfolio"
               value={inr(data.portfolio.value)}
               icon={LineChart}
               tone={data.portfolio.pnl >= 0 ? 'good' : 'critical'}
-              sub={`${data.portfolio.pnl >= 0 ? '+' : ''}${inr(data.portfolio.pnl)} overall`}
+              sub={`${data.portfolio.pnl >= 0 ? '+' : ''}${inr(data.portfolio.pnl)} (${pct(data.portfolio.cost ? data.portfolio.pnl / data.portfolio.cost : 0, 1)}) on ${inr(data.portfolio.cost)}`}
             />
           </div>
           <Section title="Where your money is invested">
