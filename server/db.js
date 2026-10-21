@@ -169,6 +169,15 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Latest NAV of each mutual fund a plan is linked to (from mfapi.in).
+CREATE TABLE IF NOT EXISTS mf_schemes (
+  code TEXT PRIMARY KEY,
+  name TEXT,
+  nav REAL,
+  nav_date TEXT,
+  updated_at TEXT
+);
+
 -- Months a SIP plan should not fill in (the instalment was deleted: skipped or bounced).
 CREATE TABLE IF NOT EXISTS sip_skips (
   sip_id INTEGER NOT NULL,
@@ -227,8 +236,10 @@ const ADDED_COLUMNS = {
   // Which bank account money left (or, for income, arrived in).
   expenses: ['bank_account_id INTEGER'],
   // auto = 1: instalment written by its SIP plan (lib/sips.js). end_date: the day a plan stopped.
-  investments: ['bank_account_id INTEGER', 'auto INTEGER NOT NULL DEFAULT 0'],
-  sips: ['bank_account_id INTEGER', 'end_date TEXT'],
+  // nav/units: the fund NAV on the instalment's date and the units it bought (lib/mf.js).
+  investments: ['bank_account_id INTEGER', 'auto INTEGER NOT NULL DEFAULT 0', 'nav REAL', 'units REAL'],
+  // scheme_code: the mfapi.in fund a plan invests in, for its current value.
+  sips: ['bank_account_id INTEGER', 'end_date TEXT', 'scheme_code TEXT', 'scheme_name TEXT'],
   income: ['bank_account_id INTEGER'],
 };
 

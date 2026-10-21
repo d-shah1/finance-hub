@@ -5,7 +5,7 @@ A personal finance tracker for **Darsh**, **Bhakti** and an **admin** who can se
 - **Expenses**: amount, date, category, payment mode (**UPI / Card / Cash**), which credit card, debit card or UPI app, the bank account it was paid from, merchant, description, need vs want, tags and notes. Search, filters and CSV export.
 - **Bank accounts**: add each account with its balance. Expenses, investments and SIPs paid from an account, and earnings credited to it, keep the balance up to date; update it from your bank app whenever you like.
 - **Earnings**: salary, freelance, bonus and more.
-- **Investments**: monthly plans (SIPs, RDs, PPF…) that **log themselves**: past instalments are filled in from the plan's start date, and each new one is logged on its debit day (edit or delete any month that differed or was skipped). Plus a log of one-off investments and **stock holdings** with P&L. Total invested = SIPs and other investments + what your stocks cost. Holdings can sync automatically from **Groww** every morning, or be entered by hand (prices refresh from Yahoo Finance's free endpoint).
+- **Investments**: monthly plans (SIPs, RDs, PPF…) that **log themselves**: past instalments are filled in from the plan's start date, and each new one is logged on its debit day (edit or delete any month that differed or was skipped). Plus a log of one-off investments and **stock holdings** with P&L. Total invested = SIPs and other investments + what your stocks cost. Link a SIP to its mutual fund to see its **current value, gain and XIRR** from daily NAVs (free, via [mfapi.in](https://www.mfapi.in)). Holdings can sync automatically from **Groww** every morning, or be entered by hand (prices refresh from Yahoo Finance's free endpoint).
 - **Credit cards**: statement day and due day per card. The app works out each bill, its due date, unbilled spend and limit used, and lets you mark bills paid.
 - **Reminders**: a push notification every evening to log the day's transactions, plus one in the morning the **day before** each credit card bill is due and each SIP is debited (skipped if the bill is already paid or the SIP already logged). If nothing has been logged today, an in-app banner shows as well.
 - **AI advisor (free)**: tells you how much to invest this month, how to split it, and where to cut spending. Uses a free AI tier (Groq or Google Gemini) or a local model (Ollama). With no key at all, a built-in rule-based advisor (50/30/20 budget, savings rate, emergency fund, card usage, stock concentration) still works.
@@ -112,6 +112,16 @@ Synced stocks show a **Groww** badge. They are updated each morning and removed 
 **Security:** these keys can place trades on the account. The app only calls Groww's read-only holdings endpoint and keeps the keys in Vercel's environment variables only (never in the database, the app's screens or logs), but anyone who obtains them could trade. Never share them, and delete the key in Groww if you stop using this.
 
 Changed a variable later? Redeploy from the Vercel dashboard (Deployments → ⋯ → Redeploy) so it takes effect.
+
+## Mutual fund values
+
+Edit a SIP plan and search for its fund under **Mutual fund (for current value)**. Pick the exact plan you hold (usually *Direct … Growth*; Regular plans have a different NAV). The app then:
+
+- looks up the NAV on each instalment's date (the next published NAV for weekends and holidays) and works out the units it bought;
+- values the plan at units × latest NAV, with gain and **XIRR** (the yearly return that accounts for when each instalment went in);
+- refreshes NAVs every morning, or on **Update NAVs**.
+
+Figures are close estimates: funds allot units at the NAV of the day the money reaches them, which can be a day after the debit, and stamp duty is ignored. NAVs come from [mfapi.in](https://www.mfapi.in), a free community service, so if it is unavailable the plan is shown at cost until the next refresh.
 
 ## Other hosting
 

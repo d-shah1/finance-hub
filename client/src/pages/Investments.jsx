@@ -12,6 +12,7 @@ import { Badge, Empty, Loading, Modal, PageHeader, Section, StatCard, toast } fr
 import { Donut, foldOther } from '@/components/charts';
 import EntityForm from '@/components/EntityForm';
 import { sipDueDates } from '@/lib/sip';
+import FundPicker from '@/components/FundPicker';
 import { accountField, useAccountOptions } from '@/hooks/useAccountOptions';
 
 const monthYear = (iso) => niceDate(iso, { month: 'short', year: 'numeric' });
@@ -29,6 +30,40 @@ function PlanPreview({ form, record }) {
       {record ? 'This plan covers' : 'Saving fills in'} {dates.length} instalment{dates.length === 1 ? '' : 's'} from {monthYear(dates[0])} to {monthYear(dates.at(-1))}
       {amount ? ` (${inr(dates.length * amount)})` : ''}. Months you already logged or edited are kept; future months are logged on their debit day.
     </p>
+  );
+}
+
+/** Invested, and with a linked fund: current value, gain and XIRR. */
+function PlanValue({ s }) {
+  const v = s.valuation;
+  const n = `${s.instalments} instalment${s.instalments === 1 ? '' : 's'}`;
+  if (!v) {
+    return (
+      <div className="text-right">
+        <div className="tabular font-semibold">{inr(s.invested)}</div>
+        <div className="text-xs text-muted-foreground">
+          invested · {n}
+          {s.scheme_code ? ' · NAV pending' : ''}
+        </div>
+      </div>
+    );
+  }
+  const up = v.gain >= 0;
+  return (
+    <div className="text-right">
+      <div className="tabular font-semibold">{inr(v.value)}</div>
+      <div className="text-xs text-muted-foreground">
+        on {inr(v.cost)} ·{' '}
+        <span className={up ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}>
+          {up ? '+' : ''}
+          {inr(v.gain)} ({pct(v.cost ? v.gain / v.cost : 0, 1)})
+        </span>
+      </div>
+      <div className="text-xs text-muted-foreground" title={`NAV ₹${v.nav} on ${niceDate(v.nav_date)}`}>
+        {v.xirr !== null ? `XIRR ${pct(v.xirr, 1)} · ` : ''}
+        {n}
+      </div>
+    </div>
   );
 }
 
@@ -54,6 +89,23 @@ function Plans({ meta, viewingAll, accountOptions }) {
     { name: 'amount', label: 'Monthly amount (₹)', type: 'number', required: true, min: 0 },
     { name: 'day_of_month', label: 'Debit day of month', type: 'number', required: true, min: 1, max: 31 },
     { name: 'type', label: 'Type', type: 'segmented', options: meta?.investmentTypes || [] },
+    {
+      name: 'fund',
+      keys: ['scheme_code', 'scheme_name'],
+      label: 'Mutual fund (for current value)',
+      type: 'custom',
+      hint: 'Optional. Pick the exact fund and plan you hold (usually "Direct … Growth") to see what this SIP is worth today.',
+      render: ({ form, set }) => (
+        <FundPicker
+          value={form.scheme_code ? { code: form.scheme_code, name: form.scheme_name } : null}
+          suggest={form.name}
+          onChange={(f) => {
+            set('scheme_code', f?.code || null);
+            set('scheme_name', f?.name || null);
+          }}
+        />
+      ),
+    },
     { name: 'platform', label: 'Platform', placeholder: 'Groww, Zerodha, Kuvera, bank…' },
     { ...accountField(accountOptions), hint: 'Each instalment is taken from this account.' },
     { name: 'start_date', label: 'Started on', type: 'date', required: true, max: todayIso(), hint: 'Past months are filled in from this date.' },
@@ -64,6 +116,23 @@ function Plans({ meta, viewingAll, accountOptions }) {
   const active = (data || []).filter((s) => s.active);
   const monthly = active.reduce((t, x) => t + x.amount, 0);
   const investedViaPlans = (data || []).reduce((t, x) => t + x.invested, 0);
+  const linked = (data || []).filter((s) => s.scheme_code);
+  const navDate = linked.map((s) => s.valuation?.nav_date).filter(Boolean).sort().at(-1);
+  const [updating, setUpdating] = useState(false);
+
+  async function updateNavs() {
+    setUpdating(true);
+    try {
+      const r = await api('/mf/refresh', { method: 'POST' });
+      if (r.errors.length) toast(`Couldn't update ${r.errors.map((e) => e.plan).join(', ')}: ${r.errors[0].error}`, 'critical');
+      else toast(`NAVs updated for ${r.plans} plan${r.plans === 1 ? '' : 's'}`);
+      refresh();
+    } catch (e) {
+      toast(e.message, 'critical');
+    } finally {
+      setUpdating(false);
+    }
+  }
 
   async function logEarly(s) {
     await api(`/sips/${s.id}/log`, { method: 'POST', body: {} });
@@ -78,13 +147,21 @@ function Plans({ meta, viewingAll, accountOptions }) {
           <h2 className="font-semibold">Monthly plans (SIPs, RDs…)</h2>
           <p className="text-xs text-muted-foreground">
             {inr(monthly)} a month across {active.length} active plan{active.length === 1 ? '' : 's'} · {inr(investedViaPlans)} invested through plans so far
+            {navDate ? ` · NAVs as of ${niceDate(navDate)}` : ''}
           </p>
         </div>
-        {!viewingAll && (
-          <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
-            <Plus /> New plan
-          </Button>
-        )}
+        <div className="flex gap-2">
+          {linked.length > 0 && (
+            <Button variant="outline" size="sm" onClick={updateNavs} disabled={updating} title={navDate ? `NAVs as of ${niceDate(navDate)}` : undefined}>
+              <RefreshCw className={updating ? 'animate-spin' : ''} /> Update NAVs
+            </Button>
+          )}
+          {!viewingAll && (
+            <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
+              <Plus /> New plan
+            </Button>
+          )}
+        </div>
       </div>
       {loading && !data ? (
         <Loading />
@@ -112,12 +189,7 @@ function Plans({ meta, viewingAll, accountOptions }) {
                   </div>
                 </div>
               </button>
-              <div className="text-right">
-                <div className="tabular font-semibold">{inr(s.invested)}</div>
-                <div className="text-xs text-muted-foreground">
-                  {s.instalments} instalment{s.instalments === 1 ? '' : 's'}
-                </div>
-              </div>
+              <PlanValue s={s} />
               <div className="flex items-center gap-2">
                 <PlanStatus s={s} />
                 {s.active && !s.logged_this_month && !viewingAll ? (
@@ -436,8 +508,25 @@ export default function Investments() {
               tone="good"
               sub={`${inr(data.contributions)} in SIPs & investments · ${inr(data.portfolio.cost)} in stocks`}
             />
-            <StatCard label="Invested this month" value={inr(data.invested)} icon={PiggyBank} tone="violet" sub={`${monthYear(todayIso())}`} />
-            <StatCard label="Monthly SIPs" value={inr(data.sipMonthly)} icon={CalendarClock} sub={`${data.sips.length} active plan${data.sips.length === 1 ? '' : 's'}`} />
+            <StatCard
+              label="Current value"
+              value={inr(data.currentValue)}
+              icon={TrendingUp}
+              tone={data.currentValue >= data.totalInvestedAllTime ? 'good' : 'critical'}
+              sub={(() => {
+                const gain = data.currentValue - data.totalInvestedAllTime;
+                const base = `${gain >= 0 ? '+' : ''}${inr(gain)} (${pct(data.totalInvestedAllTime ? gain / data.totalInvestedAllTime : 0, 1)})`;
+                const atCost = data.contributions - data.valuedAtNav;
+                return atCost > 0.5 ? `${base} · ${inr(atCost)} counted at cost (no fund linked)` : base;
+              })()}
+            />
+            <StatCard
+              label="Invested this month"
+              value={inr(data.invested)}
+              icon={CalendarClock}
+              tone="violet"
+              sub={`SIPs ${inr(data.sipMonthly)}/month · ${data.sips.length} active plan${data.sips.length === 1 ? '' : 's'}`}
+            />
             <StatCard
               label="Stock portfolio"
               value={inr(data.portfolio.value)}

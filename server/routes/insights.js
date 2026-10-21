@@ -66,6 +66,8 @@ router.post('/ai/analyse', ah(async (req, res) => {
     topMerchants: summary.topMerchants,
     activeSips: summary.sips,
     investmentsByType: summary.investByType,
+    totalInvested: summary.totalInvestedAllTime,
+    currentValueOfInvestments: summary.currentValue,
     stockPortfolio: summary.portfolio,
     creditCards: summary.cards,
     bankAccounts: summary.bank,

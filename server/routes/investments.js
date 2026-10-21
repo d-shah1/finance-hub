@@ -6,6 +6,7 @@ import { INVESTMENT_TYPES } from '../lib/constants.js';
 import { clampedDate, monthRange, nowParts, pad, today } from '../lib/dates.js';
 import { checkBankAccount } from '../lib/accounts.js';
 import { fillAllPlans, fillPlan, planStart, skipMonth, skipPausedMonths, trimPlan } from '../lib/sips.js';
+import { clearPlanUnits, planValues, valuePlan } from '../lib/mf.js';
 
 const checkAccount = (row, req, existing) => checkBankAccount(row.bank_account_id, existing?.user_id ?? row.user_id);
 
@@ -33,6 +34,17 @@ const investmentsCrud = crudRouter({
     await checkAccount(row, req, existing);
     // An instalment you edit is yours now; its plan will not change or remove it.
     if (existing?.auto) row.auto = 0;
+    // New amount or date: the units bought change too; they are recalculated on the next valuation.
+    if (existing && ((row.amount !== undefined && row.amount !== existing.amount) || (row.date !== undefined && row.date !== existing.date))) {
+      row.nav = null;
+      row.units = null;
+    }
+  },
+  // Re-value an edited instalment of a fund-linked plan right away (history is cached).
+  async afterSave(inv) {
+    if (!inv.sip_id || inv.units != null) return;
+    const sip = await db.get('SELECT * FROM sips WHERE id = ?', inv.sip_id);
+    if (sip?.scheme_code) await valuePlan(sip).catch((e) => console.warn('[mf]', sip.name, e.message));
   },
   // Deleting a plan's instalment means that month was skipped; don't fill it in again.
   onDelete: (inv) => inv.sip_id && skipMonth(inv.sip_id, inv.date),
@@ -54,6 +66,8 @@ const sipCrud = crudRouter({
     end_date: { type: 'date', label: 'Stopped on' },
     active: { type: 'bool', default: 1 },
     bank_account_id: { type: 'int' },
+    scheme_code: { type: 'string', maxLength: 20 },
+    scheme_name: { type: 'string', maxLength: 200 },
     notes: { type: 'string', maxLength: 1000 },
   },
   async beforeSave(row, req, existing) {
@@ -74,9 +88,14 @@ const sipCrud = crudRouter({
     }
   },
   // Bring the plan's instalments in line with its (possibly new) dates and amount going forward.
-  async afterSave(sip) {
+  async afterSave(sip, req, existing) {
     await trimPlan(sip);
     await fillPlan(sip);
+    if (existing && existing.scheme_code !== sip.scheme_code) await clearPlanUnits(sip.id);
+    if (sip.scheme_code) {
+      // Value straight away so the plan shows its worth; if the fund service is down, the morning job retries.
+      await valuePlan(sip).catch((e) => console.warn('[mf]', sip.name, e.message));
+    }
   },
   // Removing a plan removes the instalments it filled in; ones you logged or edited yourself stay.
   async onDelete(sip) {
@@ -104,11 +123,13 @@ sipsRouter.get('/status', ah(async (req, res) => {
      ${uid !== null ? 'WHERE s.user_id = ?' : ''} ORDER BY s.active DESC, s.day_of_month`,
     ...(uid !== null ? [uid] : [])
   );
+  const values = await planValues(uid);
   const out = [];
   for (const s of sips) {
     const entry = await db.get('SELECT id, amount, date FROM investments WHERE sip_id = ? AND date BETWEEN ? AND ?', s.id, from, to);
     out.push({
       ...s,
+      valuation: values[s.id] || null,
       start: planStart(s),
       month: ym,
       due_date: clampedDate(now.year, now.month, s.day_of_month),

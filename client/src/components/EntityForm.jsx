@@ -11,7 +11,8 @@ import { ConfirmDelete, ErrorText, Field, Modal, Segmented, toast } from './comm
 
 /**
  * Modal create/edit form driven by a field list.
- * Field: { name, label, type: text|number|date|select|segmented|toggle|color, options, required, hint, span, placeholder }
+ * Field: { name, label, type: text|number|date|select|segmented|toggle|color|custom, options, required, hint, span, placeholder }
+ * A custom field supplies render({ form, set }).
  * `extra(form)` may render a live note under the fields (e.g. what saving will do).
  */
 export default function EntityForm({ open, onClose, endpoint, title, fields, initial, record, onSaved, noun = 'Entry', extra }) {
@@ -35,7 +36,7 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
     setSaving(true);
     setError(null);
     try {
-      const body = Object.fromEntries(fields.map((f) => [f.name, form[f.name]]));
+      const body = Object.fromEntries(fields.flatMap((f) => (f.keys || [f.name]).map((k) => [k, form[k]])));
       const saved = record ? await api(`${endpoint}/${record.id}`, { method: 'PUT', body }) : await api(endpoint, { method: 'POST', body });
       toast(`${noun} ${record ? 'updated' : 'added'}`);
       refresh();
@@ -85,6 +86,13 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
           const v = form[f.name] ?? '';
           const span = f.span === 2 ? 'sm:col-span-2' : '';
           const id = `ef-${f.name}`;
+          if (f.type === 'custom') {
+            return (
+              <Field key={f.name} label={f.label} hint={f.hint} className={span || 'sm:col-span-2'}>
+                {f.render({ form, set })}
+              </Field>
+            );
+          }
           if (f.type === 'segmented') {
             return (
               <Field key={f.name} label={f.label} className={span || 'sm:col-span-2'}>

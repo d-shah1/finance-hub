@@ -47,7 +47,7 @@ export async function buildSummary(uid, month) {
 
   const months = [5, 4, 3, 2, 1, 0].map((i) => shiftMonth(ym, -i));
   // Independent queries run in parallel: each is a network round-trip on a hosted database.
-  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow, accounts] =
+  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow, accounts, worth] =
     await Promise.all([
       Promise.all(
         months.map(async (m) => {
@@ -76,6 +76,14 @@ export async function buildSummary(uid, month) {
       cardsOverview(uid),
       uid !== null ? db.get('SELECT monthly_budget FROM users WHERE id = ?', uid) : null,
       accountsOverview(uid),
+      // Investments at today's value where a fund NAV is known, otherwise at what was put in.
+      db.get(
+        `SELECT COALESCE(SUM(CASE WHEN i.units IS NOT NULL AND m.nav IS NOT NULL THEN i.units * m.nav ELSE i.amount END), 0) AS value,
+                COALESCE(SUM(CASE WHEN i.units IS NOT NULL AND m.nav IS NOT NULL THEN i.amount ELSE 0 END), 0) AS valued_cost
+         FROM investments i LEFT JOIN sips s ON s.id = i.sip_id LEFT JOIN mf_schemes m ON m.code = s.scheme_code
+         ${uid !== null ? 'WHERE i.user_id = ?' : ''}`,
+        ...own
+      ),
     ]);
 
   const recent = trend.slice(-3);
@@ -118,6 +126,10 @@ export async function buildSummary(uid, month) {
     // Money put in: SIPs and other investments, plus what the stocks you hold cost.
     totalInvestedAllTime: allTime.t + portfolioCost,
     contributions: allTime.t,
+    // What it is all worth now: funds at latest NAV (others at cost) plus stocks at market price.
+    currentValue: worth.value + portfolioValue,
+    contributionsValue: worth.value,
+    valuedAtNav: worth.valued_cost,
     investByType: (() => {
       const rows = investByType.map((r) => ({ ...r }));
       if (portfolioCost > 0) {

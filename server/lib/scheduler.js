@@ -5,6 +5,7 @@ import { addDays, clampedDate, monthRange, nowParts } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
 import { syncAllGroww } from './groww.js';
 import { fillAllPlans } from './sips.js';
+import { valueAllPlans } from './mf.js';
 
 const MORNING = '09:00';
 
@@ -88,8 +89,9 @@ export async function tick(date = new Date(), { job } = {}) {
   }
   if (job === 'morning' || (!job && now.time >= MORNING)) {
     jobs.push(once(`groww:${now.date}`, () => syncAllGroww()));
-    // Log today's SIP instalments even if nobody opens the app (keeps bank balances right).
-    jobs.push(fillAllPlans(null, now.date));
+    // Log today's SIP instalments even if nobody opens the app (keeps bank balances right),
+    // then refresh fund NAVs and value the instalments.
+    jobs.push(fillAllPlans(null, now.date).then(() => valueAllPlans(null)));
   }
   await Promise.allSettled(jobs);
   // Keep the dedupe table small.
