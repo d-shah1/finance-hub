@@ -68,6 +68,7 @@ router.post('/ai/analyse', ah(async (req, res) => {
     investmentsByType: summary.investByType,
     stockPortfolio: summary.portfolio,
     creditCards: summary.cards,
+    bankAccounts: summary.bank,
     trend6m: summary.trend,
     ruleBasedBaseline: { suggestedInvest: advice.suggestedInvest, emergencyTarget: advice.emergencyTarget, budgetSplit: advice.budgetSplit },
     userQuestion: req.body?.question ? String(req.body.question).slice(0, 500) : undefined,

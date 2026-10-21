@@ -11,8 +11,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge, Empty, Loading, Modal, PageHeader, Section, StatCard, toast } from '@/components/common';
 import { Donut, foldOther } from '@/components/charts';
 import EntityForm from '@/components/EntityForm';
+import { accountField, useAccountOptions } from '@/hooks/useAccountOptions';
 
-function Plans({ meta, viewingAll }) {
+function Plans({ meta, viewingAll, accountOptions }) {
   const { refresh } = useApp();
   const { data, loading } = useApi('/sips/status');
   const [editing, setEditing] = useState(null);
@@ -23,6 +24,7 @@ function Plans({ meta, viewingAll }) {
     { name: 'day_of_month', label: 'Debit day of month', type: 'number', required: true, min: 1, max: 31 },
     { name: 'type', label: 'Type', type: 'segmented', options: meta?.investmentTypes || [] },
     { name: 'platform', label: 'Platform', placeholder: 'Groww, Zerodha, Kuvera, bank…' },
+    { ...accountField(accountOptions), hint: 'Instalments you log are taken from this account.' },
     { name: 'start_date', label: 'Started on', type: 'date' },
     { name: 'active', label: 'Active', type: 'toggle' },
     { name: 'notes', label: 'Notes', span: 2 },
@@ -104,7 +106,7 @@ function Plans({ meta, viewingAll }) {
   );
 }
 
-function Log({ meta, viewingAll }) {
+function Log({ meta, viewingAll, accountOptions }) {
   const { data, loading } = useApi('/investments', { limit: 200 });
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
@@ -114,7 +116,8 @@ function Log({ meta, viewingAll }) {
     { name: 'date', label: 'Date', type: 'date', required: true },
     { name: 'type', label: 'Type', type: 'segmented', options: meta?.investmentTypes || [] },
     { name: 'platform', label: 'Platform' },
-    { name: 'notes', label: 'Notes' },
+    accountField(accountOptions),
+    { name: 'notes', label: 'Notes', span: 2 },
   ];
   return (
     <Card className="overflow-hidden">
@@ -377,6 +380,7 @@ function Holdings({ viewingAll }) {
 export default function Investments() {
   const { meta, viewingAll } = useApp();
   const { data } = useApi('/insights/summary');
+  const accountOptions = useAccountOptions();
 
   return (
     <>
@@ -407,10 +411,10 @@ export default function Investments() {
           <TabsTrigger value="stocks">Stock holdings</TabsTrigger>
         </TabsList>
         <TabsContent value="plans">
-          <Plans meta={meta} viewingAll={viewingAll} />
+          <Plans meta={meta} viewingAll={viewingAll} accountOptions={accountOptions} />
         </TabsContent>
         <TabsContent value="log">
-          <Log meta={meta} viewingAll={viewingAll} />
+          <Log meta={meta} viewingAll={viewingAll} accountOptions={accountOptions} />
         </TabsContent>
         <TabsContent value="stocks">
           <Holdings viewingAll={viewingAll} />

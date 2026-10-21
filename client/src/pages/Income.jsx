@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge, Empty, IconTile, Loading, PageHeader, Section } from '@/components/common';
 import { BarList, TrendChart } from '@/components/charts';
 import EntityForm from '@/components/EntityForm';
+import { accountField, useAccountOptions } from '@/hooks/useAccountOptions';
 
 export default function Income() {
   const { meta, viewingAll } = useApp();
@@ -19,10 +20,12 @@ export default function Income() {
   const [editing, setEditing] = useState(null);
   const [adding, setAdding] = useState(false);
 
+  const accountOptions = useAccountOptions();
   const fields = [
     { name: 'amount', label: 'Amount (₹)', type: 'number', required: true, min: 0 },
     { name: 'date', label: 'Date received', type: 'date', required: true },
     { name: 'source', label: 'Source', required: true, placeholder: 'e.g. Employer name, client', span: 2 },
+    { ...accountField(accountOptions, 'Credited to'), span: 2 },
     { name: 'type', label: 'Type', type: 'segmented', options: meta?.incomeTypes || [] },
     { name: 'notes', label: 'Notes', span: 2 },
   ];

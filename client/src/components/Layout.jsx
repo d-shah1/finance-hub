@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import {
-  BellRing, ChevronsUpDown, CreditCard, Download, LayoutDashboard, LogOut, Menu, Moon, PiggyBank, Plus, Receipt, Settings, Sparkles, Sun, Users, Wallet,
+  BellRing, ChevronsUpDown, CreditCard, Download, Landmark, LayoutDashboard, LogOut, Menu, Moon, PiggyBank, Plus, Receipt, Settings, Sparkles, Sun, Users, Wallet,
 } from 'lucide-react';
 import { useApp } from '@/context';
 import { api } from '@/lib/api';
@@ -24,6 +24,7 @@ const NAV = [
   { to: '/income', label: 'Earnings', icon: Wallet },
   { to: '/investments', label: 'Investments', icon: PiggyBank },
   { to: '/cards', label: 'Credit cards', icon: CreditCard },
+  { to: '/accounts', label: 'Bank accounts', icon: Landmark },
   { to: '/insights', label: 'AI advisor', icon: Sparkles },
   { to: '/settings', label: 'Settings', icon: Settings },
 ];
@@ -244,7 +245,7 @@ export default function Layout() {
 
       {/* Mobile bottom bar */}
       <nav className="pb-safe fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 border-t bg-background/90 pt-1.5 backdrop-blur lg:hidden">
-        {[NAV[0], NAV[1], null, NAV[4], NAV[5]].map((item) =>
+        {['/', '/expenses', null, '/cards', '/insights'].map((to) => NAV.find((n) => n.to === to) || null).map((item) =>
           item ? (
             <NavLink
               key={item.to}

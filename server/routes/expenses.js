@@ -1,6 +1,7 @@
 import { db } from '../db.js';
 import { crudRouter, ValidationError } from '../lib/crud.js';
 import { EXPENSE_CATEGORIES, PAYMENT_MODES } from '../lib/constants.js';
+import { checkBankAccount } from '../lib/accounts.js';
 
 export default crudRouter({
   table: 'expenses',
@@ -12,6 +13,7 @@ export default crudRouter({
     category: { type: 'string', required: true, label: 'Category' },
     payment_mode: { type: 'string', required: true, enum: PAYMENT_MODES, label: 'Payment mode' },
     card_id: { type: 'int' },
+    bank_account_id: { type: 'int' },
     upi_app: { type: 'string', maxLength: 40 },
     merchant: { type: 'string', maxLength: 120 },
     description: { type: 'string', maxLength: 300 },
@@ -41,6 +43,9 @@ export default crudRouter({
     const mode = row.payment_mode ?? existing?.payment_mode;
     if (mode !== 'Card') row.card_id = null;
     if (mode !== 'UPI') row.upi_app = null;
+    // Cash never touches a bank; a credit card is paid off later, so only a debit card or UPI does.
+    if (mode === 'Cash' || (mode === 'Card' && (row.card_id ?? existing?.card_id))) row.bank_account_id = null;
+    await checkBankAccount(row.bank_account_id, existing?.user_id ?? row.user_id);
     const cardId = row.card_id ?? (mode === 'Card' ? existing?.card_id : null);
     if (mode === 'Card' && cardId) {
       const ownerId = existing?.user_id ?? row.user_id;

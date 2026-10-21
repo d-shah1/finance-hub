@@ -101,13 +101,19 @@ export default function EntityForm({ open, onClose, endpoint, title, fields, ini
           }
           if (f.type === 'select') {
             const opts = f.options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
+            // Radix Select has no empty value, so optional fields get an explicit "None" choice.
+            const NONE = '__none';
             return (
               <Field key={f.name} label={f.label} hint={f.hint} className={span}>
-                <Select value={v === '' ? undefined : String(v)} onValueChange={(x) => set(f.name, x)}>
+                <Select
+                  value={v === '' || v === null ? (f.required ? undefined : NONE) : String(v)}
+                  onValueChange={(x) => set(f.name, x === NONE ? null : x)}
+                >
                   <SelectTrigger id={id}>
                     <SelectValue placeholder="Select…" />
                   </SelectTrigger>
                   <SelectContent>
+                    {!f.required && <SelectItem value={NONE}>{f.noneLabel || 'None'}</SelectItem>}
                     {opts.map((o) => (
                       <SelectItem key={o.value} value={String(o.value)}>
                         {o.label}

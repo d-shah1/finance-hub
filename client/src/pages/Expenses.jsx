@@ -14,7 +14,7 @@ const MODE_ICON = { UPI: Smartphone, Card: CreditCard, Cash: Banknote };
 const ALL = 'all';
 
 function toCsv(rows) {
-  const cols = ['date', 'amount', 'category', 'payment_mode', 'card_name', 'upi_app', 'merchant', 'description', 'is_need', 'tags', 'notes', 'user_name'];
+  const cols = ['date', 'amount', 'category', 'payment_mode', 'card_name', 'bank_account', 'upi_app', 'merchant', 'description', 'is_need', 'tags', 'notes', 'user_name'];
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   return [cols.join(','), ...rows.map((r) => cols.map((c) => esc(c === 'is_need' ? (r.is_need ? 'Need' : 'Want') : r[c])).join(','))].join('\n');
 }
@@ -32,8 +32,10 @@ export default function Expenses() {
   const { from, to } = monthBounds(month);
   const { data, loading } = useApi('/expenses', { from, to, payment_mode: mode, category, q });
   const cards = useApi('/cards');
+  const accounts = useApi('/accounts');
 
   const cardName = useMemo(() => Object.fromEntries((cards.data || []).map((c) => [c.id, c.name + (c.last4 ? ` ••${c.last4}` : '')])), [cards.data]);
+  const accountName = useMemo(() => Object.fromEntries((accounts.data || []).map((a) => [a.id, a.name])), [accounts.data]);
 
   const groups = useMemo(() => {
     const g = new Map();
@@ -47,7 +49,7 @@ export default function Expenses() {
   const total = (data || []).reduce((s, e) => s + e.amount, 0);
 
   function exportCsv() {
-    const rows = (data || []).map((e) => ({ ...e, card_name: cardName[e.card_id] || '' }));
+    const rows = (data || []).map((e) => ({ ...e, card_name: cardName[e.card_id] || '', bank_account: accountName[e.bank_account_id] || '' }));
     const blob = new Blob([toCsv(rows)], { type: 'text/csv' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -145,7 +147,12 @@ export default function Expenses() {
                             {!e.is_need && <Badge tone="warning">Want</Badge>}
                           </div>
                           <div className="truncate text-xs text-muted-foreground">
-                            {e.category} · {e.payment_mode === 'Card' ? cardName[e.card_id] || 'Card' : e.payment_mode === 'UPI' ? `UPI${e.upi_app ? ` · ${e.upi_app}` : ''}` : 'Cash'}
+                            {e.category} ·{' '}
+                            {e.payment_mode === 'Card'
+                              ? cardName[e.card_id] || (e.bank_account_id ? `Debit card · ${accountName[e.bank_account_id] || 'bank'}` : 'Card')
+                              : e.payment_mode === 'UPI'
+                                ? `UPI${e.upi_app ? ` · ${e.upi_app}` : ''}${accountName[e.bank_account_id] ? ` · ${accountName[e.bank_account_id]}` : ''}`
+                                : 'Cash'}
                             {e.merchant && e.description ? ` · ${e.description}` : ''}
                             {viewingAll ? ` · ${e.user_name}` : ''}
                           </div>

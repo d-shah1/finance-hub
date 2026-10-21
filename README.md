@@ -2,7 +2,8 @@
 
 A personal finance tracker for **Darsh**, **Bhakti** and an **admin** who can see everything.
 
-- **Expenses**: amount, date, category, payment mode (**UPI / Card / Cash**), which card or UPI app, merchant, description, need vs want, tags and notes. Search, filters and CSV export.
+- **Expenses**: amount, date, category, payment mode (**UPI / Card / Cash**), which credit card, debit card or UPI app, the bank account it was paid from, merchant, description, need vs want, tags and notes. Search, filters and CSV export.
+- **Bank accounts**: add each account with its balance. Expenses, investments and SIPs paid from an account, and earnings credited to it, keep the balance up to date; update it from your bank app whenever you like.
 - **Earnings**: salary, freelance, bonus and more.
 - **Investments**: monthly plans (SIPs, RDs, PPF…) with one-tap "log this month", a log of one-off investments, and **stock holdings** with P&L. Holdings can sync automatically from **Groww** every morning, or be entered by hand (prices refresh from Yahoo Finance's free endpoint).
 - **Credit cards**: statement day and due day per card. The app works out each bill, its due date, unbilled spend and limit used, and lets you mark bills paid.

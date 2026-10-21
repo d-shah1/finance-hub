@@ -1,6 +1,7 @@
 import { db } from '../db.js';
 import { monthRange, nowParts, pad, shiftMonth } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
+import { accountsOverview } from './accounts.js';
 
 const round = (n) => Math.round(n);
 const pct = (a, b) => (b > 0 ? a / b : 0);
@@ -44,7 +45,7 @@ export async function buildSummary(uid, month) {
 
   const months = [5, 4, 3, 2, 1, 0].map((i) => shiftMonth(ym, -i));
   // Independent queries run in parallel: each is a network round-trip on a hosted database.
-  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow] =
+  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow, accounts] =
     await Promise.all([
       Promise.all(
         months.map(async (m) => {
@@ -72,6 +73,7 @@ export async function buildSummary(uid, month) {
       db.all(`SELECT type AS key, SUM(amount) AS total FROM investments ${uid !== null ? 'WHERE user_id = ?' : ''} GROUP BY type ORDER BY total DESC`, ...own),
       cardsOverview(uid),
       uid !== null ? db.get('SELECT monthly_budget FROM users WHERE id = ?', uid) : null,
+      accountsOverview(uid),
     ]);
 
   const recent = trend.slice(-3);
@@ -100,6 +102,10 @@ export async function buildSummary(uid, month) {
     avgIncome,
     avgExpenses,
     budget: budgetRow?.monthly_budget ?? null,
+    bank: (() => {
+      const active = accounts.filter((a) => a.active);
+      return { count: active.length, balance: active.reduce((t, a) => t + a.current_balance, 0) };
+    })(),
     trend,
     byCategory,
     byMode,
@@ -201,11 +207,23 @@ export function ruleBasedAdvice(s) {
     }
   }
 
-  recs.push({
-    level: 'info',
-    title: `Emergency fund target: ₹${emergencyTarget.toLocaleString('en-IN')}`,
-    detail: 'Keep about six months of expenses in a liquid fund or sweep FD before taking on higher-risk investments.',
-  });
+  if (s.bank?.count && spend) {
+    const months = s.bank.balance / (s.avgExpenses || spend);
+    recs.push({
+      level: months >= 6 ? 'good' : months >= 3 ? 'info' : 'warning',
+      title: `Bank balance covers ${months.toFixed(1)} months of spending`,
+      detail:
+        months >= 6
+          ? `₹${round(s.bank.balance).toLocaleString('en-IN')} across your accounts is a full emergency fund. Money beyond ₹${emergencyTarget.toLocaleString('en-IN')} could be invested instead of sitting idle.`
+          : `₹${round(s.bank.balance).toLocaleString('en-IN')} across your accounts. Aim for about six months (₹${emergencyTarget.toLocaleString('en-IN')}) before taking on higher-risk investments.`,
+    });
+  } else {
+    recs.push({
+      level: 'info',
+      title: `Emergency fund target: ₹${emergencyTarget.toLocaleString('en-IN')}`,
+      detail: 'Keep about six months of expenses in a liquid fund or sweep FD before taking on higher-risk investments.',
+    });
+  }
 
   if (s.budget && s.expenses > s.budget) {
     recs.push({

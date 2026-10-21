@@ -3,7 +3,12 @@ import * as SelectPrimitive from '@radix-ui/react-select';
 import { Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const Select = SelectPrimitive.Root;
+// Radix can report a spurious "" through onValueChange when a controlled value is changed in code
+// (its hidden native <select> fires a change before the new option exists), which would wipe a
+// pre-filled choice. Items can never have "" as a value, so it is safe to ignore.
+const Select = ({ onValueChange, ...props }) => (
+  <SelectPrimitive.Root onValueChange={onValueChange && ((v) => v !== '' && onValueChange(v))} {...props} />
+);
 const SelectGroup = SelectPrimitive.Group;
 const SelectValue = SelectPrimitive.Value;
 

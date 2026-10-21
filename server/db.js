@@ -149,6 +149,26 @@ CREATE TABLE IF NOT EXISTS holdings (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS bank_accounts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  bank TEXT,
+  account_type TEXT NOT NULL DEFAULT 'Savings',
+  last4 TEXT,
+  -- Balance the person entered, and when. The current balance is this plus the linked
+  -- transactions recorded after it (see lib/accounts.js). balance_anchor holds the last row id
+  -- of each transaction table at that moment, so "after" is exact rather than clock-based.
+  balance REAL NOT NULL DEFAULT 0,
+  balance_set_at TEXT NOT NULL DEFAULT (datetime('now')),
+  balance_set_date TEXT,
+  balance_anchor TEXT,
+  color TEXT DEFAULT '#1baf7a',
+  active INTEGER NOT NULL DEFAULT 1,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS push_subscriptions (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -197,6 +217,11 @@ export function init() {
 // Columns added after the first release; CREATE TABLE IF NOT EXISTS does not add them to older databases.
 const ADDED_COLUMNS = {
   holdings: ["source TEXT NOT NULL DEFAULT 'manual'", 'isin TEXT', 'synced_at TEXT'],
+  // Which bank account money left (or, for income, arrived in).
+  expenses: ['bank_account_id INTEGER'],
+  investments: ['bank_account_id INTEGER'],
+  sips: ['bank_account_id INTEGER'],
+  income: ['bank_account_id INTEGER'],
 };
 
 async function migrate() {

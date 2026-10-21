@@ -1,5 +1,5 @@
 // App-level building blocks composed from shadcn/ui primitives.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { toast as sonner } from 'sonner';
 import { cn } from '@/lib/utils';
@@ -68,10 +68,20 @@ export function Field({ label, children, hint, className = '', htmlFor }) {
 /**
  * Single-choice pill group (shadcn ToggleGroup). Values may be strings or numbers;
  * clicking the active option keeps it selected rather than clearing it.
+ * With `scroll`, the pills stay on one line and scroll sideways, edge to edge in a dialog.
  */
-export function Segmented({ options, value, onChange, size = 'default', className }) {
+export function Segmented({ options, value, onChange, size = 'default', className, scroll = false }) {
   const opts = options.map((o) => (typeof o === 'object' ? o : { value: o, label: o }));
-  return (
+  const rowRef = useRef(null);
+
+  // Keep the selected pill visible, e.g. when editing an expense in a category far along the row.
+  useEffect(() => {
+    if (!scroll) return;
+    const el = rowRef.current?.querySelector('[data-state="on"]');
+    el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }, [scroll, value, options.length]);
+
+  const group = (
     <ToggleGroup
       type="single"
       variant="outline"
@@ -82,14 +92,14 @@ export function Segmented({ options, value, onChange, size = 'default', classNam
         const hit = opts.find((o) => String(o.value) === v);
         if (hit) onChange(hit.value);
       }}
-      className={cn('flex-wrap justify-start', className)}
+      className={cn(scroll ? 'w-max flex-nowrap justify-start' : 'flex-wrap justify-start', !scroll && className)}
     >
       {opts.map((o) => (
         <ToggleGroupItem
           key={String(o.value)}
           value={String(o.value)}
           className={cn(
-            'rounded-full data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary',
+            'shrink-0 rounded-full data-[state=on]:border-primary data-[state=on]:bg-primary/10 data-[state=on]:text-primary',
             size === 'sm' ? 'px-3 text-xs' : 'px-3.5'
           )}
         >
@@ -98,6 +108,12 @@ export function Segmented({ options, value, onChange, size = 'default', classNam
         </ToggleGroupItem>
       ))}
     </ToggleGroup>
+  );
+  if (!scroll) return group;
+  return (
+    <div ref={rowRef} className={cn('no-scrollbar -mx-6 overflow-x-auto scroll-px-6 px-6 pb-1', className)}>
+      {group}
+    </div>
   );
 }
 

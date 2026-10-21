@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { config } from './config.js';
 import { init } from './db.js';
 import { ah, requireAuth } from './lib/auth.js';
-import { EXPENSE_CATEGORIES, INCOME_TYPES, INVESTMENT_TYPES, PAYMENT_MODES, UPI_APPS } from './lib/constants.js';
+import { EXPENSE_CATEGORIES, INCOME_TYPES, INVESTMENT_TYPES, PAYMENT_MODES, UPI_APPS, ACCOUNT_TYPES } from './lib/constants.js';
 import usersRouter from './routes/users.js';
 import expensesRouter from './routes/expenses.js';
 import incomeRouter from './routes/income.js';
@@ -14,6 +14,7 @@ import insightsRouter from './routes/insights.js';
 import pushRouter from './routes/push.js';
 import { investmentsRouter, sipsRouter } from './routes/investments.js';
 import { cardPaymentsRouter, cardsRouter } from './routes/cards.js';
+import accountsRouter from './routes/accounts.js';
 import { tick } from './lib/scheduler.js';
 
 export function createApp() {
@@ -42,13 +43,14 @@ export function createApp() {
   app.use('/api', usersRouter);
   app.use('/api', requireAuth);
   app.get('/api/meta', (req, res) =>
-    res.json({ categories: EXPENSE_CATEGORIES, paymentModes: PAYMENT_MODES, upiApps: UPI_APPS, incomeTypes: INCOME_TYPES, investmentTypes: INVESTMENT_TYPES, timezone: config.timezone, fixedReminderTimes: config.onVercel })
+    res.json({ categories: EXPENSE_CATEGORIES, paymentModes: PAYMENT_MODES, upiApps: UPI_APPS, incomeTypes: INCOME_TYPES, investmentTypes: INVESTMENT_TYPES, accountTypes: ACCOUNT_TYPES, timezone: config.timezone, fixedReminderTimes: config.onVercel })
   );
   app.use('/api/expenses', expensesRouter);
   app.use('/api/income', incomeRouter);
   app.use('/api/investments', investmentsRouter);
   app.use('/api/sips', sipsRouter);
   app.use('/api/holdings', holdingsRouter);
+  app.use('/api/accounts', accountsRouter);
   app.use('/api/cards', cardsRouter);
   app.use('/api/card-payments', cardPaymentsRouter);
   app.use('/api/insights', insightsRouter);

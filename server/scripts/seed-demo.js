@@ -1,6 +1,7 @@
 // Fills the database with ~3 months of realistic sample data for Darsh and Bhakti.
 // Usage: npm run demo   (uses DB_PATH, so point it at a throwaway file if you want to keep your real data clean)
 import { db, init } from '../db.js';
+import { stampBalance } from '../lib/accounts.js';
 import { addDays, nowParts, pad } from '../lib/dates.js';
 
 await init();
@@ -51,6 +52,16 @@ for (const u of users) {
       await ins.run(u.id, date, Math.round(lo + rand() * (hi - lo)), cat, mode, mode === 'Card' ? (rand() > 0.4 ? card1 : card2) : null, mode === 'UPI' ? pick(['GPay', 'PhonePe', 'Paytm']) : null, pick(merchants), null, need);
     }
   }
+
+  // A bank account whose balance was entered today, so new linked entries move it.
+  const stamp = {};
+  await stampBalance(stamp);
+  await db.run(
+    'INSERT INTO bank_accounts (user_id, name, bank, account_type, last4, balance, balance_set_at, balance_set_date, balance_anchor, color) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    u.id, u.username === 'darsh' ? 'HDFC Salary' : 'SBI Savings', u.username === 'darsh' ? 'HDFC Bank' : 'State Bank of India', 'Salary',
+    u.username === 'darsh' ? '7781' : '2209', u.username === 'darsh' ? 184250 : 96400, stamp.balance_set_at, stamp.balance_set_date, stamp.balance_anchor,
+    u.username === 'darsh' ? '#1baf7a' : '#2a78d6'
+  );
 
   const sips = u.username === 'darsh'
     ? [['Nifty 50 Index Fund', 'Mutual Fund', 8000, 5, 'Groww'], ['Parag Parikh Flexi Cap', 'Mutual Fund', 5000, 10, 'Groww'], ['PPF', 'PPF', 3000, 25, 'SBI']]

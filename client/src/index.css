@@ -64,6 +64,8 @@
 @layer utilities {
   .tabular { font-variant-numeric: tabular-nums; }
   .pb-safe { padding-bottom: max(env(safe-area-inset-bottom), 0.5rem); }
+  .no-scrollbar { scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .no-scrollbar::-webkit-scrollbar { display: none; }
 }
 
 /* Markdown from the AI advisor */
