@@ -24,7 +24,7 @@ const crud = crudRouter({
     if (!existing || row.balance !== undefined) await stampBalance(row);
   },
   async onDelete(acc) {
-    for (const t of ['expenses', 'investments', 'income', 'sips']) {
+    for (const t of ['expenses', 'investments', 'income', 'sips', 'fixed_deposits']) {
       await db.run(`UPDATE ${t} SET bank_account_id = NULL WHERE bank_account_id = ?`, acc.id);
     }
   },

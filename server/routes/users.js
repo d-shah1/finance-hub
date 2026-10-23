@@ -108,7 +108,7 @@ router.post('/users/:id/password', requireAdmin, ah(async (req, res) => {
   res.json({ ok: true });
 }));
 
-const USER_TABLES = ['card_payments', 'expenses', 'income', 'investments', 'sips', 'holdings', 'cards', 'bank_accounts', 'push_subscriptions', 'ai_reports'];
+const USER_TABLES = ['card_payments', 'expenses', 'income', 'investments', 'sips', 'holdings', 'fixed_deposits', 'cards', 'bank_accounts', 'push_subscriptions', 'ai_reports'];
 
 router.delete('/users/:id', requireAdmin, ah(async (req, res) => {
   if (Number(req.params.id) === req.user.id) return res.status(400).json({ error: 'You cannot delete your own account' });

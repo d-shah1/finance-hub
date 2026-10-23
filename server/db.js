@@ -169,6 +169,32 @@ CREATE TABLE IF NOT EXISTS bank_accounts (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Fixed deposits. maturity_date is worked out from start_date + tenure; closed_on/close_type record
+-- an FD withdrawn early or renewed into a new one (renewed_from links the new FD to the old).
+CREATE TABLE IF NOT EXISTS fixed_deposits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  bank TEXT NOT NULL,
+  name TEXT,
+  fd_number TEXT,
+  principal REAL NOT NULL,
+  rate REAL NOT NULL,
+  start_date TEXT NOT NULL,
+  tenure_months INTEGER NOT NULL DEFAULT 12,
+  tenure_days INTEGER NOT NULL DEFAULT 0,
+  maturity_date TEXT NOT NULL,
+  compounding TEXT NOT NULL DEFAULT 'quarterly',
+  payout TEXT NOT NULL DEFAULT 'cumulative',
+  bank_account_id INTEGER,
+  auto_renew INTEGER NOT NULL DEFAULT 0,
+  renewed_from INTEGER,
+  closed_on TEXT,
+  close_type TEXT,
+  close_amount REAL,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Latest NAV of each mutual fund a plan is linked to (from mfapi.in).
 CREATE TABLE IF NOT EXISTS mf_schemes (
   code TEXT PRIMARY KEY,

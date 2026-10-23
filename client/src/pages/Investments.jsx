@@ -15,6 +15,7 @@ import EntityForm from '@/components/EntityForm';
 import { sipDueDates } from '@/lib/sip';
 import FundPicker from '@/components/FundPicker';
 import { accountField, useAccountOptions } from '@/hooks/useAccountOptions';
+import FixedDeposits from './FixedDeposits';
 
 const monthYear = (iso) => niceDate(iso, { month: 'short', year: 'numeric' });
 const fullDate = (iso) => niceDate(iso, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -50,6 +51,7 @@ function PortfolioSummary({ data }) {
   const rows = [
     // Without any linked fund these are only known at cost, so a "+₹0" change would mislead.
     { label: 'SIPs & investments', invested: data.contributions, value: data.contributionsValue, atCost: data.valuedAtNav < 0.5 },
+    { label: 'Fixed deposits', invested: data.fd?.invested || 0, value: data.fd?.value || 0 },
     { label: 'Stocks', invested: data.portfolio.cost, value: data.portfolio.value },
   ].filter((r) => r.invested > 0);
 
@@ -701,16 +703,20 @@ export default function Investments() {
 
   return (
     <>
-      <PageHeader title="Investments" subtitle="SIPs, one-off investments and stocks" />
+      <PageHeader title="Investments" subtitle="SIPs, fixed deposits, one-off investments and stocks" />
       {data && <PortfolioSummary data={data} />}
       <Tabs defaultValue="plans">
         <TabsList className="mb-2">
-          <TabsTrigger value="plans">Monthly plans</TabsTrigger>
-          <TabsTrigger value="log">Log</TabsTrigger>
+          <TabsTrigger value="plans">SIPs</TabsTrigger>
+          <TabsTrigger value="fds">FDs</TabsTrigger>
           <TabsTrigger value="stocks">Stocks</TabsTrigger>
+          <TabsTrigger value="log">Log</TabsTrigger>
         </TabsList>
         <TabsContent value="plans">
           <Plans meta={meta} viewingAll={viewingAll} accountOptions={accountOptions} />
+        </TabsContent>
+        <TabsContent value="fds">
+          <FixedDeposits viewingAll={viewingAll} accountOptions={accountOptions} />
         </TabsContent>
         <TabsContent value="log">
           <Log meta={meta} viewingAll={viewingAll} accountOptions={accountOptions} />

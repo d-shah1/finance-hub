@@ -1,6 +1,7 @@
 import { db } from '../db.js';
 import { ValidationError } from './crud.js';
 import { today } from './dates.js';
+import { payoutOnEnd } from './fd.js';
 
 /** UTC timestamp in SQLite's datetime('now') format, so it compares with created_at columns. */
 export const sqlNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
@@ -16,11 +17,12 @@ export async function checkBankAccount(accountId, ownerId) {
 }
 
 const TABLES = ['expenses', 'investments', 'income'];
+const ANCHORED = [...TABLES, 'fixed_deposits'];
 
 /** Records the balance moment: the last row id of each transaction table and today's date. */
 export async function stampBalance(row) {
   const anchor = {};
-  for (const t of TABLES) anchor[t] = (await db.get(`SELECT COALESCE(MAX(id), 0) AS m FROM ${t}`)).m;
+  for (const t of ANCHORED) anchor[t] = (await db.get(`SELECT COALESCE(MAX(id), 0) AS m FROM ${t}`)).m;
   row.balance_anchor = JSON.stringify(anchor);
   row.balance_set_at = sqlNow();
   row.balance_set_date = today();
@@ -46,10 +48,36 @@ export async function accountsOverview(uid) {
           db.get(`SELECT COALESCE(SUM(amount), 0) AS total, COUNT(*) AS n FROM ${t} WHERE bank_account_id = ? AND id > ? AND date >= ?`, a.id, anchor[t] ?? 0, date)
         )
       );
+      // FDs: opening one takes the money out (renewals don't, they re-use the matured amount);
+      // the payout comes back on the day it is withdrawn or matures.
+      const fds = await db.all('SELECT * FROM fixed_deposits WHERE bank_account_id = ?', a.id);
+      const now = today();
+      let fdOut = 0;
+      let fdIn = 0;
+      let fdCount = 0;
+      for (const f of fds) {
+        if (!f.renewed_from && f.id > (anchor.fixed_deposits ?? 0) && f.start_date >= date) {
+          fdOut += f.principal;
+          fdCount++;
+        }
+        const ended = f.closed_on || (f.maturity_date <= now ? f.maturity_date : null);
+        if (ended && ended > date && ended <= now) {
+          const back = payoutOnEnd(f);
+          if (back) {
+            fdIn += back;
+            fdCount++;
+          }
+        }
+      }
       return {
         ...a,
-        current_balance: a.balance - spent.total - invested.total + received.total,
-        since: { spent: spent.total, invested: invested.total, received: received.total, count: spent.n + invested.n + received.n },
+        current_balance: a.balance - spent.total - invested.total - fdOut + received.total + fdIn,
+        since: {
+          spent: spent.total,
+          invested: invested.total + fdOut,
+          received: received.total + fdIn,
+          count: spent.n + invested.n + received.n + fdCount,
+        },
       };
     })
   );

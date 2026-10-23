@@ -16,6 +16,7 @@ import { investmentsRouter, sipsRouter } from './routes/investments.js';
 import { cardPaymentsRouter, cardsRouter } from './routes/cards.js';
 import accountsRouter from './routes/accounts.js';
 import mfRouter from './routes/mf.js';
+import fdsRouter from './routes/fds.js';
 import { tick } from './lib/scheduler.js';
 
 export function createApp() {
@@ -53,6 +54,7 @@ export function createApp() {
   app.use('/api/holdings', holdingsRouter);
   app.use('/api/accounts', accountsRouter);
   app.use('/api/mf', mfRouter);
+  app.use('/api/fds', fdsRouter);
   app.use('/api/cards', cardsRouter);
   app.use('/api/card-payments', cardPaymentsRouter);
   app.use('/api/insights', insightsRouter);

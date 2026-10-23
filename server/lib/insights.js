@@ -3,6 +3,7 @@ import { monthRange, nowParts, pad, shiftMonth } from './dates.js';
 import { cardsOverview } from '../routes/cards.js';
 import { accountsOverview } from './accounts.js';
 import { fillAllPlans } from './sips.js';
+import { fdFigures } from './fd.js';
 
 const round = (n) => Math.round(n);
 const pct = (a, b) => (b > 0 ? a / b : 0);
@@ -47,7 +48,7 @@ export async function buildSummary(uid, month) {
 
   const months = [5, 4, 3, 2, 1, 0].map((i) => shiftMonth(ym, -i));
   // Independent queries run in parallel: each is a network round-trip on a hosted database.
-  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow, accounts, worth] =
+  const [trend, income, expenses, invested, wants, byCategory, byMode, topMerchants, daily, holdingRows, sips, allTime, investByType, cards, budgetRow, accounts, worth, fdRows] =
     await Promise.all([
       Promise.all(
         months.map(async (m) => {
@@ -84,7 +85,17 @@ export async function buildSummary(uid, month) {
          ${uid !== null ? 'WHERE i.user_id = ?' : ''}`,
         ...own
       ),
+      db.all(`SELECT * FROM fixed_deposits WHERE closed_on IS NULL ${uid !== null ? 'AND user_id = ?' : ''}`, ...own),
     ]);
+
+  // Running FDs count as invested (principal) and at their value today. Matured ones are paid out.
+  const runningFds = fdRows.map((f) => ({ ...f, ...fdFigures(f) })).filter((f) => f.status === 'active');
+  const fd = {
+    count: runningFds.length,
+    invested: runningFds.reduce((t, f) => t + f.principal, 0),
+    value: runningFds.reduce((t, f) => t + f.value_today, 0),
+    nextMaturity: runningFds.map((f) => f.maturity_date).sort()[0] || null,
+  };
 
   const recent = trend.slice(-3);
   const withIncome = recent.filter((t) => t.income > 0);
@@ -124,19 +135,23 @@ export async function buildSummary(uid, month) {
     sips,
     sipMonthly: sips.reduce((s, x) => s + x.amount, 0),
     // Money put in: SIPs and other investments, plus what the stocks you hold cost.
-    totalInvestedAllTime: allTime.t + portfolioCost,
+    totalInvestedAllTime: allTime.t + portfolioCost + fd.invested,
     contributions: allTime.t,
-    // What it is all worth now: funds at latest NAV (others at cost) plus stocks at market price.
-    currentValue: worth.value + portfolioValue,
+    fd,
+    // What it is all worth now: funds at latest NAV (others at cost), stocks at market price, FDs with interest so far.
+    currentValue: worth.value + portfolioValue + fd.value,
     contributionsValue: worth.value,
     valuedAtNav: worth.valued_cost,
     investByType: (() => {
       const rows = investByType.map((r) => ({ ...r }));
-      if (portfolioCost > 0) {
-        const stocks = rows.find((r) => r.key === 'Stocks');
-        if (stocks) stocks.total += portfolioCost;
-        else rows.push({ key: 'Stocks', total: portfolioCost });
-      }
+      const add = (key, amount) => {
+        if (amount <= 0) return;
+        const hit = rows.find((r) => r.key === key);
+        if (hit) hit.total += amount;
+        else rows.push({ key, total: amount });
+      };
+      add('Stocks', portfolioCost);
+      add('FD', fd.invested);
       return rows.sort((a, b) => b.total - a.total);
     })(),
     portfolio: {

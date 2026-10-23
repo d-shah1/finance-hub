@@ -3,6 +3,7 @@
 import { db, init } from '../db.js';
 import { stampBalance } from '../lib/accounts.js';
 import { fillPlan } from '../lib/sips.js';
+import { maturityDate } from '../lib/fd.js';
 import { addDays, nowParts, pad } from '../lib/dates.js';
 
 await init();
@@ -75,6 +76,19 @@ for (const u of users) {
       u.id, name, type, amount, day, platform, start
     );
     await fillPlan(await db.get('SELECT * FROM sips WHERE id = ?', lastInsertRowid), todayIso);
+  }
+  // Fixed deposits: one running, one that matured last month (waiting to be renewed or withdrawn).
+  if (u.username === 'darsh') {
+    for (const [bank, label, principal, rate, startDaysAgo, months] of [
+      ['SBI', 'Emergency fund', 200000, 7.1, 240, 12],
+      ['HDFC Bank', null, 50000, 6.6, 400, 12],
+    ]) {
+      const start = addDays(todayIso, -startDaysAgo);
+      await db.run(
+        'INSERT INTO fixed_deposits (user_id, bank, name, principal, rate, start_date, tenure_months, tenure_days, maturity_date) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)',
+        u.id, bank, label, principal, rate, start, months, maturityDate(start, months, 0)
+      );
+    }
   }
   const stocks = u.username === 'darsh'
     ? [['INFY', 'Infosys', 25, 1420, 1512], ['HDFCBANK', 'HDFC Bank', 30, 1580, 1702], ['TATAMOTORS', 'Tata Motors', 40, 980, 812], ['ITC', 'ITC', 100, 410, 436]]

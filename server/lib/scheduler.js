@@ -6,6 +6,8 @@ import { cardsOverview } from '../routes/cards.js';
 import { syncAllGroww } from './groww.js';
 import { fillAllPlans } from './sips.js';
 import { valueAllPlans } from './mf.js';
+import { fdFigures } from './fd.js';
+import { renewFd } from '../routes/fds.js';
 
 const MORNING = '09:00';
 
@@ -43,6 +45,19 @@ async function dayBeforeReminders(u, now) {
           body: `Billed ${fmt(c.billed_amount)}, due ${niceDate(c.cycle.due_date)}. Tap to mark it paid.`,
           url: '/cards',
           tag: `card-${c.id}`,
+        })
+      )
+    );
+  }
+  for (const f of await db.all('SELECT * FROM fixed_deposits WHERE user_id = ? AND closed_on IS NULL AND maturity_date = ?', u.id, tomorrow)) {
+    const { maturity_amount } = fdFigures(f, now.date);
+    jobs.push(
+      once(`fd:${f.id}:${tomorrow}`, () =>
+        sendToUser(u.id, {
+          title: `${f.bank} FD matures tomorrow`,
+          body: `${fmt(maturity_amount)} on ${niceDate(tomorrow)}. ${f.auto_renew ? 'It will be renewed automatically.' : 'Decide whether to renew or withdraw.'}`,
+          url: '/investments',
+          tag: `fd-${f.id}`,
         })
       )
     );
@@ -92,6 +107,16 @@ export async function tick(date = new Date(), { job } = {}) {
     // Log today's SIP instalments even if nobody opens the app (keeps bank balances right),
     // then refresh fund NAVs and value the instalments.
     jobs.push(fillAllPlans(null, now.date).then(() => valueAllPlans(null)));
+    // FDs set to auto-renew roll over into a new FD on their maturity date.
+    jobs.push(
+      db.all("SELECT * FROM fixed_deposits WHERE auto_renew = 1 AND closed_on IS NULL AND maturity_date <= ?", now.date).then(async (due) => {
+        for (const f of due) {
+          // Catch up in one go if several terms have passed.
+          let cur = f;
+          while (cur.maturity_date <= now.date) cur = await renewFd(cur);
+        }
+      })
+    );
   }
   await Promise.allSettled(jobs);
   // Keep the dedupe table small.
